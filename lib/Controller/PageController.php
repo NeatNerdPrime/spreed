@@ -32,6 +32,7 @@ use OCA\Talk\Manager;
 use OCA\Talk\Participant;
 use OCA\Talk\Room;
 use OCA\Talk\TalkSession;
+use OCA\Viewer\Event\LoadViewer;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\ContentSecurityPolicy;
@@ -39,6 +40,7 @@ use OCP\AppFramework\Http\RedirectResponse;
 use OCP\AppFramework\Http\Response;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\AppFramework\Http\Template\PublicTemplateResponse;
+use OCP\EventDispatcher\IEventDispatcher;
 use OCP\ILogger;
 use OCP\IRequest;
 use OCP\IURLGenerator;
@@ -49,6 +51,8 @@ use OCP\Notification\IManager;
 class PageController extends Controller {
 	/** @var string|null */
 	private $userId;
+	/** @var IEventDispatcher */
+	private $eventDispatcher;
 	/** @var RoomController */
 	private $api;
 	/** @var TalkSession */
@@ -68,6 +72,7 @@ class PageController extends Controller {
 
 	public function __construct(string $appName,
 								IRequest $request,
+								IEventDispatcher $eventDispatcher,
 								RoomController $api,
 								TalkSession $session,
 								IUserSession $userSession,
@@ -78,6 +83,7 @@ class PageController extends Controller {
 								IManager $notificationManager,
 								Config $config) {
 		parent::__construct($appName, $request);
+		$this->eventDispatcher = $eventDispatcher;
 		$this->api = $api;
 		$this->talkSession = $session;
 		$this->userSession = $userSession;
@@ -134,6 +140,10 @@ class PageController extends Controller {
 		if (!$user instanceof IUser) {
 			return $this->guestEnterRoom($token, $password);
 		}
+
+		// Internal files that can be opened by Viewer are available only for
+		// registered user.
+		$this->eventDispatcher->dispatch(LoadViewer::class, new LoadViewer());
 
 		if ($token !== '') {
 			$room = null;

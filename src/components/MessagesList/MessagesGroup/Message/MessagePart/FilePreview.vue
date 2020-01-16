@@ -23,7 +23,8 @@
 	<a :href="data.link"
 		class="container"
 		target="_blank"
-		rel="noopener noreferrer">
+		rel="noopener noreferrer"
+		@click="showPreview">
 		<img v-if="!isLoading && !failed"
 			class="preview"
 			alt=""
@@ -50,6 +51,7 @@ export default {
 				return {
 					id: '',
 					name: '',
+					path: '',
 					link: '',
 					mimetype: '',
 					'preview-available': '',
@@ -90,6 +92,36 @@ export default {
 			this.isLoading = false
 		}
 		img.src = this.previewUrl
+	},
+	methods: {
+		showPreview(event) {
+			if (!this.isViewerAvailable()) {
+				// Regular event handling by opening the link.
+				return
+			}
+
+			event.stopPropagation()
+			event.preventDefault()
+
+			OCA.Viewer.open({
+				// Viewer expects an internal absolute path starting with "/".
+				path: '/' + this.data.path
+			})
+		},
+		isViewerAvailable() {
+			if (!OCA.Viewer) {
+				return false
+			}
+
+			const availableHandlers = OCA.Viewer.availableHandlers
+			for (let i = 0; i < availableHandlers.length; i++) {
+				if (availableHandlers[i].mimes.includes(this.data.mimetype)) {
+					return true
+				}
+			}
+
+			return false
+		},
 	},
 }
 </script>
