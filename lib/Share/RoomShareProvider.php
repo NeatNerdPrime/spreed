@@ -66,6 +66,8 @@ class RoomShareProvider implements IShareProvider {
 	// Special share type for user modified room shares
 	public const SHARE_TYPE_USERROOM = 11;
 
+	public const TALK_FOLDER = 'Talk/';
+
 	/** @var IDBConnection */
 	private $dbConnection;
 	/** @var ISecureRandom */
