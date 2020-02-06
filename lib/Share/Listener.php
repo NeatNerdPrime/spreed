@@ -24,6 +24,7 @@ namespace OCA\Talk\Share;
 
 use OC\Files\Filesystem;
 use OCP\EventDispatcher\IEventDispatcher;
+use OCP\Share\Events\VerifyMountPointEvent;
 use OCP\Share\IShare;
 use Symfony\Component\EventDispatcher\GenericEvent;
 
@@ -31,6 +32,7 @@ class Listener {
 
 	public static function register(IEventDispatcher $dispatcher): void {
 		$dispatcher->addListener('OCP\Share::preShare', [self::class, 'overwriteShareTarget'], 1000);
+		$dispatcher->addListener(VerifyMountPointEvent::class, [self::class, 'overwriteMountPoint'], 1000);
 	}
 
 	public static function overwriteShareTarget(GenericEvent $event): void {
@@ -42,8 +44,25 @@ class Listener {
 			return;
 		}
 
-		$target = '/' . RoomShareProvider::TALK_FOLDER . $share->getNode()->getName();
+		$target = RoomShareProvider::TALK_FOLDER_PLACEHOLDER . '/' . $share->getNode()->getName();
 		$target = Filesystem::normalizePath($target);
 		$share->setTarget($target);
+	}
+
+	public static function overwriteMountPoint(VerifyMountPointEvent $event): void {
+		$share = $event->getShare();
+
+		if ($share->getShareType() !== IShare::TYPE_ROOM
+			&& $share->getShareType() !== RoomShareProvider::SHARE_TYPE_USERROOM) {
+			return;
+		}
+
+		if ($event->getParent() === RoomShareProvider::TALK_FOLDER_PLACEHOLDER) {
+			$parent = RoomShareProvider::TALK_FOLDER; // FIXME user preference
+			$event->setParent($parent);
+			if (!$event->getView()->is_dir($parent)) {
+				$event->getView()->mkdir($parent);
+			}
+		}
 	}
 }
