@@ -40,6 +40,9 @@ import { getBuilder } from '@nextcloud/browser-storage'
 const browserStorage = getBuilder('nextcloud').persist().build()
 
 // note: this info is shared with the Avatar component
+/**
+ * @param userId
+ */
 function getUserHasAvatar(userId) {
 	const flag = browserStorage.getItem('user-has-avatar.' + userId)
 	if (typeof flag === 'string') {
@@ -48,6 +51,10 @@ function getUserHasAvatar(userId) {
 	return null
 }
 
+/**
+ * @param userId
+ * @param flag
+ */
 function setUserHasAvatar(userId, flag) {
 	browserStorage.setItem('user-has-avatar.' + userId, flag)
 }
@@ -88,7 +95,7 @@ export default {
 			// If the prop is empty. We're not checking for the default value
 			// because the user's displayName might be '?'
 			if (!this.displayName) {
-				return `var(--color-text-maxcontrast)`
+				return 'var(--color-text-maxcontrast)'
 			} else {
 				const color = usernameToColor(this.displayName)
 				return `rgb(${color.r}, ${color.g}, ${color.b})`

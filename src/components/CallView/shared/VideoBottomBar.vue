@@ -126,6 +126,7 @@ import Video from 'vue-material-design-icons/Video'
 import VideoOff from 'vue-material-design-icons/VideoOff'
 import { PARTICIPANT } from '../../../constants'
 import Hand from 'vue-material-design-icons/Hand'
+import { emit } from '@nextcloud/event-bus'
 
 export default {
 	name: 'VideoBottomBar',
@@ -136,7 +137,7 @@ export default {
 		Microphone,
 		MicrophoneOff,
 		Monitor,
-		'VideoIcon': Video,
+		VideoIcon: Video,
 		VideoOff,
 	},
 
@@ -261,12 +262,15 @@ export default {
 		},
 
 		toggleVideo() {
-			this.sharedData.videoEnabled = !this.sharedData.videoEnabled
+			emit('talk:video:toggled', {
+				peerId: this.model.attributes.peerId,
+				value: !this.sharedData.videoEnabled,
+			})
 		},
 
 		switchToScreen() {
 			if (!this.sharedData.screenVisible) {
-				this.$emit('switchScreenToId', this.peerId)
+				this.$emit('switch-screen-to-id', this.model.attributes.peerId)
 			}
 		},
 

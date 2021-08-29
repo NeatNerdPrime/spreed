@@ -2,7 +2,7 @@
  *
  * @copyright Copyright (c) 2020, Daniel Calviño Sánchez (danxuliu@gmail.com)
  *
- * @license GNU AGPL version 3 or any later version
+ * @license AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -55,6 +55,9 @@ const STAT_VALUE_TYPE = {
  * the raw value that was added or the relative one after the conversion (which,
  * for non cumulative values, will be the raw value too).
  *
+ * A string representation of the current relative values can be got by calling
+ * "toString()".
+ *
  * @param {int} count the number of instances to take into account.
  * @param {STAT_VALUE_TYPE} type whether the value is cumulative or relative.
  * @param {int} lastValueWeight the value to calculate the weights of all the
@@ -70,12 +73,12 @@ function AverageStatValue(count, type = STAT_VALUE_TYPE.CUMULATIVE, lastValueWei
 }
 AverageStatValue.prototype = {
 
-	reset: function() {
+	reset() {
 		this._rawValues = []
 		this._relativeValues = []
 	},
 
-	add: function(value) {
+	add(value) {
 		if (this._rawValues.length === this._count) {
 			this._rawValues.shift()
 			this._relativeValues.shift()
@@ -93,7 +96,7 @@ AverageStatValue.prototype = {
 		this._relativeValues.push(relativeValue)
 	},
 
-	getLastRawValue: function() {
+	getLastRawValue() {
 		if (this._rawValues.length < 1) {
 			return NaN
 		}
@@ -101,7 +104,7 @@ AverageStatValue.prototype = {
 		return this._rawValues[this._rawValues.length - 1]
 	},
 
-	getLastRelativeValue: function() {
+	getLastRelativeValue() {
 		if (this._relativeValues.length < 1) {
 			return NaN
 		}
@@ -109,11 +112,11 @@ AverageStatValue.prototype = {
 		return this._relativeValues[this._relativeValues.length - 1]
 	},
 
-	hasEnoughData: function() {
+	hasEnoughData() {
 		return this._rawValues.length === this._count
 	},
 
-	getWeightedAverage: function() {
+	getWeightedAverage() {
 		let weightedValues = 0
 		let weightsSum = 0
 
@@ -125,6 +128,22 @@ AverageStatValue.prototype = {
 		}
 
 		return weightedValues / weightsSum
+	},
+
+	toString() {
+		if (!this._relativeValues.length) {
+			return '[]'
+		}
+
+		let relativeValuesAsString = '[' + this._relativeValues[0]
+
+		for (let i = 1; i < this._relativeValues.length; i++) {
+			relativeValuesAsString += ', ' + this._relativeValues[i]
+		}
+
+		relativeValuesAsString += ']'
+
+		return relativeValuesAsString
 	},
 
 }

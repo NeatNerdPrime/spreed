@@ -52,7 +52,6 @@ import CallButton from './components/TopBar/CallButton'
 import { EventBus } from './services/EventBus'
 import { getPublicShareConversationData } from './services/filesIntegrationServices'
 import {
-	joinConversation,
 	leaveConversationSync,
 } from './services/participantsService'
 import { signalingKill } from './utils/webrtc/index'
@@ -142,7 +141,7 @@ export default {
 
 			await this.getPublicShareConversationData()
 
-			await joinConversation(this.token)
+			await this.$store.dispatch('joinConversation', { token: this.token })
 
 			// No need to wait for it, but fetching the conversation needs to be
 			// done once the user has joined the conversation (otherwise only
@@ -156,10 +155,10 @@ export default {
 			// "inCall" flag (which is locally updated when joining and leaving
 			// a call) is currently used.
 			if (loadState('spreed', 'signaling_mode') !== 'internal') {
-				EventBus.$on('shouldRefreshConversations', this.fetchCurrentConversation)
-				EventBus.$on('Signaling::participantListChanged', this.fetchCurrentConversation)
+				EventBus.$on('should-refresh-conversations', this.fetchCurrentConversation)
+				EventBus.$on('signaling-participant-list-changed', this.fetchCurrentConversation)
 			} else {
-				// The "shouldRefreshConversations" event is triggered only when
+				// The "should-refresh-conversations" event is triggered only when
 				// the external signaling server is used; when the internal
 				// signaling server is used periodic polling has to be used
 				// instead.

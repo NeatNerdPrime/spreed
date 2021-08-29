@@ -1,7 +1,7 @@
 /**
  * @copyright Copyright (c) 2020 Daniel Calviño Sánchez <danxuliu@gmail.com>
  *
- * @license GNU AGPL version 3 or any later version
+ * @license AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -19,6 +19,7 @@
  */
 
 import Vue from 'vue'
+import VueObserveVisibility from 'vue-observe-visibility'
 import PublicShareAuthRequestPasswordButton from './PublicShareAuthRequestPasswordButton'
 import PublicShareAuthSidebar from './PublicShareAuthSidebar'
 import './init'
@@ -38,6 +39,12 @@ import vOutsideEvents from 'vue-outside-events'
 
 // Styles
 import '@nextcloud/dialogs/styles/toast.scss'
+import 'leaflet/dist/leaflet.css'
+
+// Leaflet icon patch
+import 'leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.webpack.css' // Re-uses images from ~leaflet package
+// eslint-disable-next-line
+import 'leaflet-defaulticon-compatibility'
 
 // CSP config for webpack dynamic chunk loading
 // eslint-disable-next-line
@@ -58,6 +65,7 @@ Vue.prototype.OCA = OCA
 Vue.use(Vuex)
 Vue.use(VueShortKey, { prevent: ['input', 'textarea', 'div'] })
 Vue.use(vOutsideEvents)
+Vue.use(VueObserveVisibility)
 
 /**
  * Wraps all the body contents in its own container.
@@ -85,6 +93,9 @@ function wrapBody() {
 	bodyElement.appendChild(bodyWrapperElement)
 }
 
+/**
+ *
+ */
 function adjustLayout() {
 	const contentElement = document.createElement('div')
 	contentElement.setAttribute('id', 'content')
@@ -108,6 +119,9 @@ function adjustLayout() {
 
 adjustLayout()
 
+/**
+ *
+ */
 function getShareToken() {
 	const shareTokenElement = document.getElementById('sharingToken')
 	return shareTokenElement.value

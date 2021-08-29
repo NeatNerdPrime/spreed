@@ -53,8 +53,6 @@
 import { EventBus } from './services/EventBus'
 import { getFileConversation } from './services/filesIntegrationServices'
 import {
-	joinConversation,
-	leaveConversation,
 	leaveConversationSync,
 } from './services/participantsService'
 import CancelableRequest from './utils/cancelableRequest'
@@ -184,7 +182,7 @@ export default {
 				return
 			}
 
-			await joinConversation(this.token)
+			await this.$store.dispatch('joinConversation', { token: this.token })
 
 			// The current participant (which is automatically set when fetching
 			// the current conversation) is needed for the MessagesList to start
@@ -202,10 +200,10 @@ export default {
 			// "inCall" flag (which is locally updated when joining and leaving
 			// a call) is currently used.
 			if (loadState('spreed', 'signaling_mode') !== 'internal') {
-				EventBus.$on('shouldRefreshConversations', OCA.Talk.fetchCurrentConversationWrapper)
-				EventBus.$on('Signaling::participantListChanged', OCA.Talk.fetchCurrentConversationWrapper)
+				EventBus.$on('should-refresh-conversations', OCA.Talk.fetchCurrentConversationWrapper)
+				EventBus.$on('signaling-participant-list-changed', OCA.Talk.fetchCurrentConversationWrapper)
 			} else {
-				// The "shouldRefreshConversations" event is triggered only when
+				// The "should-refresh-conversations" event is triggered only when
 				// the external signaling server is used; when the internal
 				// signaling server is used periodic polling has to be used
 				// instead.
@@ -214,9 +212,11 @@ export default {
 		},
 
 		leaveConversation() {
-			EventBus.$off('shouldRefreshConversations', OCA.Talk.fetchCurrentConversationWrapper)
-			EventBus.$off('Signaling::participantListChanged', OCA.Talk.fetchCurrentConversationWrapper)
+			EventBus.$off('should-refresh-conversations', OCA.Talk.fetchCurrentConversationWrapper)
+			EventBus.$off('signaling-participant-list-changed', OCA.Talk.fetchCurrentConversationWrapper)
 			window.clearInterval(OCA.Talk.fetchCurrentConversationIntervalId)
+
+			// TODO: move to store under a special action ?
 
 			// Remove the conversation to ensure that the old data is not used
 			// before fetching it again if this conversation is joined again.
@@ -225,7 +225,7 @@ export default {
 			// if this conversation is joined again.
 			this.$store.dispatch('purgeParticipantsStore', this.token)
 
-			leaveConversation(this.token)
+			this.$store.dispatch('leaveConversation', { token: this.token })
 
 			this.$store.dispatch('updateTokenAndFileIdForToken', {
 				newToken: null,

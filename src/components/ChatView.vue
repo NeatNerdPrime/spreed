@@ -48,7 +48,7 @@
 			:is-chat-scrolled-to-bottom="isChatScrolledToBottom"
 			:token="token"
 			:is-visible="isVisible"
-			@setChatScrolledToBottom="setScrollStatus" />
+			@set-chat-scrolled-to-bottom="setScrollStatus" />
 		<NewMessageForm
 			role="region"
 			:is-chat-scrolled-to-bottom="isChatScrolledToBottom"
@@ -59,7 +59,6 @@
 <script>
 import MessagesList from './MessagesList/MessagesList'
 import NewMessageForm from './NewMessageForm/NewMessageForm'
-import { processFiles } from '../utils/fileUpload'
 import { CONVERSATION } from '../constants'
 
 export default {
@@ -78,7 +77,7 @@ export default {
 		},
 	},
 
-	data: function() {
+	data() {
 		return {
 			isDraggingOver: false,
 			/**
@@ -140,7 +139,7 @@ export default {
 			// Create a unique id for the upload operation
 			const uploadId = new Date().getTime()
 			// Uploads and shares the files
-			processFiles(files, this.token, uploadId)
+			this.$store.dispatch('initialiseUpload', { files, token: this.token, uploadId })
 		},
 
 		setScrollStatus(payload) {
@@ -158,7 +157,7 @@ export default {
 	display: flex;
 	flex-direction: column;
 	flex-grow: 1;
-	position: absolute;
+	min-height: 0;
 }
 
 .dragover {

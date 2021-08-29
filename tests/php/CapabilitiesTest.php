@@ -87,6 +87,11 @@ class CapabilitiesTest extends TestCase {
 			'room-description',
 			'rich-object-sharing',
 			'temp-user-avatar-api',
+			'geo-location-sharing',
+			'voice-message-sharing',
+			'signaling-v3',
+			'publishing-permissions',
+			'clear-history',
 		];
 	}
 
@@ -190,6 +195,7 @@ class CapabilitiesTest extends TestCase {
 			]);
 
 		$this->assertInstanceOf(IPublicCapability::class, $capabilities);
+		$data = $capabilities->getCapabilities();
 		$this->assertSame([
 			'spreed' => [
 				'features' => array_merge(
@@ -214,7 +220,22 @@ class CapabilitiesTest extends TestCase {
 					],
 				],
 			],
-		], $capabilities->getCapabilities());
+		], $data);
+
+		foreach ($data['spreed']['features'] as $feature) {
+			$this->assertCapabilityIsDocumented("`$feature`");
+		}
+
+		foreach ($data['spreed']['config'] as $feature => $configs) {
+			foreach ($configs as $config => $data) {
+				$this->assertCapabilityIsDocumented("`config => $feature => $config`");
+			}
+		}
+	}
+
+	protected function assertCapabilityIsDocumented(string $capability): void {
+		$docs = file_get_contents(__DIR__ . '/../../docs/capabilities.md');
+		self::assertStringContainsString($capability, $docs, 'Asserting that capability ' . $capability . ' is documented');
 	}
 
 	public function testGetCapabilitiesUserDisallowed(): void {

@@ -160,6 +160,9 @@ class ChatController extends AEnvironmentAwareController {
 			if ($actorDisplayName) {
 				$this->guestManager->updateName($this->room, $this->participant, $actorDisplayName);
 			}
+		} elseif ($this->userId === MatterbridgeManager::BRIDGE_BOT_USERID && $actorDisplayName) {
+			$actorType = Attendee::ACTOR_BRIDGED;
+			$actorId = str_replace(["/", "\""], "", $actorDisplayName);
 		} else {
 			$actorType = Attendee::ACTOR_USERS;
 			$actorId = $this->userId;
@@ -553,6 +556,9 @@ class ChatController extends AEnvironmentAwareController {
 		$attendee = $this->participant->getAttendee();
 		$isOwnMessage = $message->getActorType() === $attendee->getActorType()
 			&& $message->getActorId() === $attendee->getActorId();
+
+		// Special case for if the message is a bridged message, then the message is the bridge bot's message.
+		$isOwnMessage = $isOwnMessage || ($message->getActorType() === Attendee::ACTOR_BRIDGED && $attendee->getActorId() === MatterbridgeManager::BRIDGE_BOT_USERID);
 		if (!$isOwnMessage
 			&& (!$this->participant->hasModeratorPermissions(false)
 				|| $this->room->getType() === Room::ONE_TO_ONE_CALL)) {
@@ -592,7 +598,43 @@ class ChatController extends AEnvironmentAwareController {
 
 		$bridge = $this->matterbridgeManager->getBridgeOfRoom($this->room);
 
-		$response = new DataResponse($data, $bridge['enabled'] ? Http::STATUS_ACCEPTED: Http::STATUS_OK);
+		$response = new DataResponse($data, $bridge['enabled'] ? Http::STATUS_ACCEPTED : Http::STATUS_OK);
+		if ($this->participant->getAttendee()->getReadPrivacy() === Participant::PRIVACY_PUBLIC) {
+			$response->addHeader('X-Chat-Last-Common-Read', $this->chatManager->getLastCommonReadMessage($this->room));
+		}
+		return $response;
+	}
+
+	/**
+	 * @NoAdminRequired
+	 * @RequireModeratorParticipant
+	 * @RequireReadWriteConversation
+	 *
+	 * @return DataResponse
+	 */
+	public function clearHistory(): DataResponse {
+		$attendee = $this->participant->getAttendee();
+		if (!$this->participant->hasModeratorPermissions(false)
+				|| $this->room->getType() === Room::ONE_TO_ONE_CALL) {
+			// Actor is not a moderator or not the owner of the message
+			return new DataResponse([], Http::STATUS_FORBIDDEN);
+		}
+
+		$systemMessageComment = $this->chatManager->clearHistory(
+			$this->room,
+			$attendee->getActorType(),
+			$attendee->getActorId()
+		);
+
+		$systemMessage = $this->messageParser->createMessage($this->room, $this->participant, $systemMessageComment, $this->l);
+		$this->messageParser->parseMessage($systemMessage);
+
+
+		$data = $systemMessage->toArray();
+
+		$bridge = $this->matterbridgeManager->getBridgeOfRoom($this->room);
+
+		$response = new DataResponse($data, $bridge['enabled'] ? Http::STATUS_ACCEPTED : Http::STATUS_OK);
 		if ($this->participant->getAttendee()->getReadPrivacy() === Participant::PRIVACY_PUBLIC) {
 			$response->addHeader('X-Chat-Last-Common-Read', $this->chatManager->getLastCommonReadMessage($this->room));
 		}

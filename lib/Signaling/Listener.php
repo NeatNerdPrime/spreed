@@ -65,6 +65,7 @@ class Listener {
 		$dispatcher->addListener(Room::EVENT_AFTER_ROOM_CONNECT, $listener);
 		$dispatcher->addListener(Room::EVENT_AFTER_GUEST_CONNECT, $listener);
 		$dispatcher->addListener(Room::EVENT_AFTER_SESSION_JOIN_CALL, $listener);
+		$dispatcher->addListener(Room::EVENT_AFTER_SESSION_UPDATE_CALL_FLAGS, $listener);
 		$dispatcher->addListener(Room::EVENT_AFTER_SESSION_LEAVE_CALL, $listener);
 		$dispatcher->addListener(GuestManager::EVENT_AFTER_NAME_UPDATE, $listener);
 
@@ -82,6 +83,7 @@ class Listener {
 		$dispatcher->addListener(Room::EVENT_BEFORE_USER_REMOVE, $listener);
 		$dispatcher->addListener(Room::EVENT_BEFORE_PARTICIPANT_REMOVE, $listener);
 		$dispatcher->addListener(Room::EVENT_BEFORE_ROOM_DISCONNECT, $listener);
+		$dispatcher->addListener(Room::EVENT_AFTER_PARTICIPANT_PUBLISHING_PERMISSIONS_SET, $listener);
 
 		$listener = static function (RoomEvent $event) {
 			$room = $event->getRoom();
@@ -129,7 +131,8 @@ class Listener {
 		// "participantsModified" once the clients no longer expect a
 		// "roomModified" message for participant type changes.
 		$dispatcher->addListener(Room::EVENT_AFTER_PARTICIPANT_TYPE_SET, $listener);
-		$dispatcher->addListener(Room::EVENT_AFTER_PARTICIPANT_TYPE_SET, static function (ModifyParticipantEvent $event) {
+
+		$listener = static function (ModifyParticipantEvent $event) {
 			if (self::isUsingInternalSignaling()) {
 				return;
 			}
@@ -150,7 +153,10 @@ class Listener {
 			}
 
 			$notifier->participantsModified($event->getRoom(), $sessionIds);
-		});
+		};
+		$dispatcher->addListener(Room::EVENT_AFTER_PARTICIPANT_TYPE_SET, $listener);
+		$dispatcher->addListener(Room::EVENT_AFTER_PARTICIPANT_PUBLISHING_PERMISSIONS_SET, $listener);
+
 		$dispatcher->addListener(Room::EVENT_BEFORE_ROOM_DELETE, static function (RoomEvent $event) {
 			if (self::isUsingInternalSignaling()) {
 				return;
@@ -241,6 +247,7 @@ class Listener {
 			}
 		};
 		$dispatcher->addListener(Room::EVENT_AFTER_SESSION_JOIN_CALL, $listener);
+		$dispatcher->addListener(Room::EVENT_AFTER_SESSION_UPDATE_CALL_FLAGS, $listener);
 		$dispatcher->addListener(Room::EVENT_AFTER_SESSION_LEAVE_CALL, $listener);
 
 		$dispatcher->addListener(Room::EVENT_AFTER_GUESTS_CLEAN, static function (RoomEvent $event) {

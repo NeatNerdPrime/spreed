@@ -16,6 +16,7 @@ OC.L10N.register(
     "Guest" : "Guest",
     "Welcome to Nextcloud Talk!\nIn this conversation you will be informed about new features available in Nextcloud Talk." : "Welcome to Nextcloud Talk!\nIn this conversation you will be informed about new features available in Nextcloud Talk.",
     "- Microsoft Edge and Safari can now be used to participate in audio and video calls" : "- Microsoft Edge and Safari can now be used to participate in audio and video calls",
+    "- One-to-one conversations are now persistent and cannot be turned into group conversations by accident anymore. Also when one of the participants leaves the conversation, the conversation is not automatically deleted anymore. Only if both participants leave, the conversation is deleted from the server" : "- One-to-one conversations are now persistent and cannot be turned into group conversations by accident anymore. Also when one of the participants leaves the conversation, the conversation is not automatically deleted anymore. Only if both participants leave, the conversation is deleted from the server",
     "- You can now notify all participants by posting \"@all\" into the chat" : "- You can now notify all participants by posting \"@all\" into the chat",
     "- With the \"arrow-up\" key you can repost your last message" : "- With the \"arrow-up\" key you can repost your last message",
     "- Talk can now have commands, send \"/help\" as a chat message to see if your administrator configured some" : "- Talk can now have commands, send \"/help\" as a chat message to see if your administrator configured some",
@@ -121,7 +122,6 @@ OC.L10N.register(
     "Conversation name" : "Conversation name",
     "Camera" : "Camera",
     "Reply" : "Reply",
-    "Remove" : "Remove",
     "Today" : "Today",
     "Yesterday" : "Yesterday",
     "{relativeDate}, {absoluteDate}" : "{relativeDate}, {absoluteDate}",
@@ -161,6 +161,7 @@ OC.L10N.register(
     "New in Talk 7" : "New in Talk 7",
     "New in Talk 8" : "New in Talk 8",
     "New in Talk 9" : "New in Talk 9",
+    "New in Talk 10" : "New in Talk 10",
     "{user} wants to talk with you" : "{user} wants to talk with you",
     "UDP and TCP" : "UDP and TCP",
     "UDP only" : "UDP only",
@@ -169,10 +170,10 @@ OC.L10N.register(
     "Unmute audio (m)" : "Unmute audio (m)",
     "Disable video (v)" : "Disable video (v)",
     "Enable video (v)" : "Enable video (v)",
+    "Remove" : "Remove",
+    "Enabled" : "Enabled",
     "Share link" : "Share link",
     "Exit fullscreen (f)" : "Exit fullscreen (f)",
-    "Fullscreen (f)" : "Fullscreen (f)",
-    "New in Talk 10" : "New in Talk 10",
-    "Enabled" : "Enabled"
+    "Fullscreen (f)" : "Fullscreen (f)"
 },
 "nplurals=2; plural=(n != 1);");

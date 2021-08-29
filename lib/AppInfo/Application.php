@@ -23,6 +23,9 @@ declare(strict_types=1);
 
 namespace OCA\Talk\AppInfo;
 
+use OCA\Circles\Events\AddingCircleMemberEvent;
+use OCA\Circles\Events\CircleDestroyedEvent;
+use OCA\Circles\Events\RemovingCircleMemberEvent;
 use OCA\Files_Sharing\Event\BeforeTemplateRenderedEvent;
 use OCA\Talk\Activity\Listener as ActivityListener;
 use OCA\Talk\Capabilities;
@@ -36,13 +39,17 @@ use OCA\Talk\Collaboration\Resources\ConversationProvider;
 use OCA\Talk\Collaboration\Resources\Listener as ResourceListener;
 use OCA\Talk\Config;
 use OCA\Talk\Dashboard\TalkWidget;
+use OCA\Talk\Events\AttendeesAddedEvent;
+use OCA\Talk\Events\AttendeesRemovedEvent;
 use OCA\Talk\Events\ChatEvent;
 use OCA\Talk\Events\RoomEvent;
 use OCA\Talk\Deck\DeckPluginLoader;
 use OCA\Talk\Files\Listener as FilesListener;
 use OCA\Talk\Files\TemplateLoader as FilesTemplateLoader;
-use OCA\Talk\Flow\Operation;
+use OCA\Talk\Flow\RegisterOperationsListener;
 use OCA\Talk\Listener\BeforeUserLoggedOutListener;
+use OCA\Talk\Listener\CircleDeletedListener;
+use OCA\Talk\Listener\CircleMembershipListener;
 use OCA\Talk\Listener\CSPListener;
 use OCA\Talk\Listener\FeaturePolicyListener;
 use OCA\Talk\Listener\GroupDeletedListener;
@@ -84,6 +91,7 @@ use OCP\Settings\IManager;
 use OCP\User\Events\BeforeUserLoggedOutEvent;
 use OCP\User\Events\UserChangedEvent;
 use OCP\User\Events\UserDeletedEvent;
+use OCP\WorkflowEngine\Events\RegisterOperationsEvent;
 
 class Application extends App implements IBootstrap {
 	public const APP_ID = 'spreed';
@@ -109,6 +117,13 @@ class Application extends App implements IBootstrap {
 		$context->registerEventListener(\OCP\AppFramework\Http\Events\BeforeTemplateRenderedEvent::class, UnifiedSearchCSSLoader::class);
 		$context->registerEventListener(UserChangedEvent::class, UserDisplayNameListener::class);
 		$context->registerEventListener(\OCP\AppFramework\Http\Events\BeforeTemplateRenderedEvent::class, DeckPluginLoader::class);
+		$context->registerEventListener(RegisterOperationsEvent::class, RegisterOperationsListener::class);
+		$context->registerEventListener(AttendeesAddedEvent::class, SystemMessageListener::class);
+		$context->registerEventListener(AttendeesRemovedEvent::class, SystemMessageListener::class);
+
+		$context->registerEventListener(CircleDestroyedEvent::class, CircleDeletedListener::class);
+		$context->registerEventListener(AddingCircleMemberEvent::class, CircleMembershipListener::class);
+		$context->registerEventListener(RemovingCircleMemberEvent::class, CircleMembershipListener::class);
 
 		$context->registerSearchProvider(ConversationSearch::class);
 		$context->registerSearchProvider(CurrentMessageSearch::class);
@@ -143,7 +158,6 @@ class Application extends App implements IBootstrap {
 		ResourceListener::register($dispatcher);
 		ChangelogListener::register($dispatcher);
 		ShareListener::register($dispatcher);
-		Operation::register($dispatcher);
 
 		$this->registerRoomActivityHooks($dispatcher);
 		$this->registerChatHooks($dispatcher);
@@ -159,7 +173,7 @@ class Application extends App implements IBootstrap {
 		$resourceManager = $server->query(IProviderManager::class);
 		$resourceManager->registerResourceProvider(ConversationProvider::class);
 		$server->getEventDispatcher()->addListener('\OCP\Collaboration\Resources::loadAdditionalScripts', function () {
-			\OCP\Util::addScript(self::APP_ID, 'collections');
+			\OCP\Util::addScript(self::APP_ID, 'talk-collections');
 		});
 	}
 

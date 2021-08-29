@@ -1,7 +1,7 @@
 /**
  * @copyright Copyright (c) 2020 Daniel Calviño Sánchez <danxuliu@gmail.com>
  *
- * @license GNU AGPL version 3 or any later version
+ * @license AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -19,6 +19,7 @@
  */
 
 import Vue from 'vue'
+import VueObserveVisibility from 'vue-observe-visibility'
 import PublicShareSidebar from './PublicShareSidebar'
 import './init'
 
@@ -37,6 +38,12 @@ import vOutsideEvents from 'vue-outside-events'
 
 // Styles
 import '@nextcloud/dialogs/styles/toast.scss'
+import 'leaflet/dist/leaflet.css'
+
+// Leaflet icon patch
+import 'leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.webpack.css' // Re-uses images from ~leaflet package
+// eslint-disable-next-line
+import 'leaflet-defaulticon-compatibility'
 
 // CSP config for webpack dynamic chunk loading
 // eslint-disable-next-line
@@ -57,7 +64,11 @@ Vue.prototype.OCA = OCA
 Vue.use(Vuex)
 Vue.use(VueShortKey, { prevent: ['input', 'textarea', 'div'] })
 Vue.use(vOutsideEvents)
+Vue.use(VueObserveVisibility)
 
+/**
+ *
+ */
 function adjustLayout() {
 	document.querySelector('#app-content').appendChild(document.querySelector('footer'))
 
@@ -81,6 +92,9 @@ if (window.innerWidth > 1111) {
 	sidebarState.isOpen = true
 }
 
+/**
+ *
+ */
 function addTalkSidebarTrigger() {
 	const talkSidebarTriggerElement = document.createElement('button')
 	talkSidebarTriggerElement.setAttribute('id', 'talk-sidebar-trigger')
@@ -102,6 +116,9 @@ function addTalkSidebarTrigger() {
 
 addTalkSidebarTrigger()
 
+/**
+ *
+ */
 function getShareToken() {
 	const shareTokenElement = document.getElementById('sharingToken')
 	return shareTokenElement.value

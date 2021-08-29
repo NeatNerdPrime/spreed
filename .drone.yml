@@ -3,7 +3,7 @@ name: int-sqlite-callapi
 
 steps:
   - name: integration-callapi
-    image: nextcloudci/php7.3:php7.3-5
+    image: ghcr.io/nextcloud/continuous-integration-php7.3:php7.3-6
     environment:
       APP_NAME: spreed
       CORE_BRANCH: master
@@ -22,7 +22,7 @@ steps:
 
 services:
   - name: cache
-    image: redis
+    image: ghcr.io/nextcloud/continuous-integration-redis:latest
 
 trigger:
   branch:
@@ -38,7 +38,7 @@ name: int-sqlite-chat
 
 steps:
   - name: integration-chat
-    image: nextcloudci/php7.3:php7.3-5
+    image: ghcr.io/nextcloud/continuous-integration-php7.3:php7.3-6
     environment:
       APP_NAME: spreed
       CORE_BRANCH: master
@@ -57,7 +57,7 @@ steps:
 
 services:
   - name: cache
-    image: redis
+    image: ghcr.io/nextcloud/continuous-integration-redis:latest
 
 trigger:
   branch:
@@ -73,7 +73,7 @@ name: int-sqlite-command
 
 steps:
   - name: integration-command
-    image: nextcloudci/php7.3:php7.3-5
+    image: ghcr.io/nextcloud/continuous-integration-php7.3:php7.3-6
     environment:
       APP_NAME: spreed
       CORE_BRANCH: master
@@ -92,7 +92,7 @@ steps:
 
 services:
   - name: cache
-    image: redis
+    image: ghcr.io/nextcloud/continuous-integration-redis:latest
 
 trigger:
   branch:
@@ -108,7 +108,7 @@ name: int-sqlite-conversation
 
 steps:
   - name: integration-conversation
-    image: nextcloudci/php7.3:php7.3-5
+    image: ghcr.io/nextcloud/continuous-integration-php7.3:php7.3-6
     environment:
       APP_NAME: spreed
       CORE_BRANCH: master
@@ -129,7 +129,7 @@ steps:
 
 services:
   - name: cache
-    image: redis
+    image: ghcr.io/nextcloud/continuous-integration-redis:latest
 
 trigger:
   branch:
@@ -145,7 +145,7 @@ name: int-sqlite-conversation-2
 
 steps:
   - name: integration-conversation-2
-    image: nextcloudci/php7.3:php7.3-5
+    image: ghcr.io/nextcloud/continuous-integration-php7.3:php7.3-6
     environment:
       APP_NAME: spreed
       CORE_BRANCH: master
@@ -166,7 +166,7 @@ steps:
 
 services:
   - name: cache
-    image: redis
+    image: ghcr.io/nextcloud/continuous-integration-redis:latest
 
 trigger:
   branch:
@@ -182,7 +182,7 @@ name: int-sqlite-sharing
 
 steps:
   - name: integration-sharing
-    image: nextcloudci/php7.3:php7.3-5
+    image: ghcr.io/nextcloud/continuous-integration-php7.3:php7.3-6
     environment:
       APP_NAME: spreed
       CORE_BRANCH: master
@@ -201,7 +201,7 @@ steps:
 
 services:
   - name: cache
-    image: redis
+    image: ghcr.io/nextcloud/continuous-integration-redis:latest
 
 trigger:
   branch:
@@ -217,7 +217,7 @@ name: int-sqlite-sharing-2
 
 steps:
   - name: integration-sharing-2
-    image: nextcloudci/php7.3:php7.3-5
+    image: ghcr.io/nextcloud/continuous-integration-php7.3:php7.3-6
     environment:
       APP_NAME: spreed
       CORE_BRANCH: master
@@ -236,7 +236,7 @@ steps:
 
 services:
   - name: cache
-    image: redis
+    image: ghcr.io/nextcloud/continuous-integration-redis:latest
 
 trigger:
   branch:
@@ -252,7 +252,7 @@ name: int-mysql-callapi
 
 steps:
   - name: integration-callapi
-    image: nextcloudci/php7.3:php7.3-5
+    image: ghcr.io/nextcloud/continuous-integration-php7.3:php7.3-6
     environment:
       APP_NAME: spreed
       CORE_BRANCH: master
@@ -271,9 +271,9 @@ steps:
 
 services:
   - name: cache
-    image: redis
+    image: ghcr.io/nextcloud/continuous-integration-redis:latest
   - name: mysql
-    image: mysql:5.7.22
+    image: ghcr.io/nextcloud/continuous-integration-mysql-5.7:mysql-5.7.22
     environment:
       MYSQL_ROOT_PASSWORD: owncloud
       MYSQL_USER: oc_autotest
@@ -297,7 +297,7 @@ name: int-mysql-chat
 
 steps:
   - name: integration-chat
-    image: nextcloudci/php7.3:php7.3-5
+    image: ghcr.io/nextcloud/continuous-integration-php7.3:php7.3-6
     environment:
       APP_NAME: spreed
       CORE_BRANCH: master
@@ -316,9 +316,9 @@ steps:
 
 services:
   - name: cache
-    image: redis
+    image: ghcr.io/nextcloud/continuous-integration-redis:latest
   - name: mysql
-    image: mysql:5.7.22
+    image: ghcr.io/nextcloud/continuous-integration-mysql-5.7:mysql-5.7.22
     environment:
       MYSQL_ROOT_PASSWORD: owncloud
       MYSQL_USER: oc_autotest
@@ -342,7 +342,7 @@ name: int-mysql-command
 
 steps:
   - name: integration-command
-    image: nextcloudci/php7.3:php7.3-5
+    image: ghcr.io/nextcloud/continuous-integration-php7.3:php7.3-6
     environment:
       APP_NAME: spreed
       CORE_BRANCH: master
@@ -361,9 +361,9 @@ steps:
 
 services:
   - name: cache
-    image: redis
+    image: ghcr.io/nextcloud/continuous-integration-redis:latest
   - name: mysql
-    image: mysql:5.7.22
+    image: ghcr.io/nextcloud/continuous-integration-mysql-5.7:mysql-5.7.22
     environment:
       MYSQL_ROOT_PASSWORD: owncloud
       MYSQL_USER: oc_autotest
@@ -387,7 +387,7 @@ name: int-mysql-conversation
 
 steps:
   - name: integration-conversation
-    image: nextcloudci/php7.3:php7.3-5
+    image: ghcr.io/nextcloud/continuous-integration-php7.3:php7.3-6
     environment:
       APP_NAME: spreed
       CORE_BRANCH: master
@@ -408,9 +408,9 @@ steps:
 
 services:
   - name: cache
-    image: redis
+    image: ghcr.io/nextcloud/continuous-integration-redis:latest
   - name: mysql
-    image: mysql:5.7.22
+    image: ghcr.io/nextcloud/continuous-integration-mysql-5.7:mysql-5.7.22
     environment:
       MYSQL_ROOT_PASSWORD: owncloud
       MYSQL_USER: oc_autotest
@@ -434,7 +434,7 @@ name: int-mysql-conversation-2
 
 steps:
   - name: integration-conversation-2
-    image: nextcloudci/php7.3:php7.3-5
+    image: ghcr.io/nextcloud/continuous-integration-php7.3:php7.3-6
     environment:
       APP_NAME: spreed
       CORE_BRANCH: master
@@ -455,9 +455,9 @@ steps:
 
 services:
   - name: cache
-    image: redis
+    image: ghcr.io/nextcloud/continuous-integration-redis:latest
   - name: mysql
-    image: mysql:5.7.22
+    image: ghcr.io/nextcloud/continuous-integration-mysql-5.7:mysql-5.7.22
     environment:
       MYSQL_ROOT_PASSWORD: owncloud
       MYSQL_USER: oc_autotest
@@ -481,7 +481,7 @@ name: int-mysql-sharing
 
 steps:
   - name: integration-sharing
-    image: nextcloudci/php7.3:php7.3-5
+    image: ghcr.io/nextcloud/continuous-integration-php7.3:php7.3-6
     environment:
       APP_NAME: spreed
       CORE_BRANCH: master
@@ -500,9 +500,9 @@ steps:
 
 services:
   - name: cache
-    image: redis
+    image: ghcr.io/nextcloud/continuous-integration-redis:latest
   - name: mysql
-    image: mysql:5.7.22
+    image: ghcr.io/nextcloud/continuous-integration-mysql-5.7:mysql-5.7.22
     environment:
       MYSQL_ROOT_PASSWORD: owncloud
       MYSQL_USER: oc_autotest
@@ -526,7 +526,7 @@ name: int-mysql-sharing-2
 
 steps:
   - name: integration-sharing-2
-    image: nextcloudci/php7.3:php7.3-5
+    image: ghcr.io/nextcloud/continuous-integration-php7.3:php7.3-6
     environment:
       APP_NAME: spreed
       CORE_BRANCH: master
@@ -545,9 +545,9 @@ steps:
 
 services:
   - name: cache
-    image: redis
+    image: ghcr.io/nextcloud/continuous-integration-redis:latest
   - name: mysql
-    image: mysql:5.7.22
+    image: ghcr.io/nextcloud/continuous-integration-mysql-5.7:mysql-5.7.22
     environment:
       MYSQL_ROOT_PASSWORD: owncloud
       MYSQL_USER: oc_autotest
@@ -571,7 +571,7 @@ name: int-pgsql-callapi
 
 steps:
   - name: integration-callapi
-    image: nextcloudci/php7.3:php7.3-5
+    image: ghcr.io/nextcloud/continuous-integration-php7.3:php7.3-6
     environment:
       APP_NAME: spreed
       CORE_BRANCH: master
@@ -590,9 +590,9 @@ steps:
 
 services:
   - name: cache
-    image: redis
+    image: ghcr.io/nextcloud/continuous-integration-redis:latest
   - name: pgsql
-    image: postgres:10
+    image: ghcr.io/nextcloud/continuous-integration-postgres-10:postgres-10
     environment:
       POSTGRES_USER: oc_autotest
       POSTGRES_DB: oc_autotest_dummy
@@ -615,7 +615,7 @@ name: int-pgsql-chat
 
 steps:
   - name: integration-chat
-    image: nextcloudci/php7.3:php7.3-5
+    image: ghcr.io/nextcloud/continuous-integration-php7.3:php7.3-6
     environment:
       APP_NAME: spreed
       CORE_BRANCH: master
@@ -634,9 +634,9 @@ steps:
 
 services:
   - name: cache
-    image: redis
+    image: ghcr.io/nextcloud/continuous-integration-redis:latest
   - name: pgsql
-    image: postgres:10
+    image: ghcr.io/nextcloud/continuous-integration-postgres-10:postgres-10
     environment:
       POSTGRES_USER: oc_autotest
       POSTGRES_DB: oc_autotest_dummy
@@ -659,7 +659,7 @@ name: int-pgsql-command
 
 steps:
   - name: integration-command
-    image: nextcloudci/php7.3:php7.3-5
+    image: ghcr.io/nextcloud/continuous-integration-php7.3:php7.3-6
     environment:
       APP_NAME: spreed
       CORE_BRANCH: master
@@ -678,9 +678,9 @@ steps:
 
 services:
   - name: cache
-    image: redis
+    image: ghcr.io/nextcloud/continuous-integration-redis:latest
   - name: pgsql
-    image: postgres:10
+    image: ghcr.io/nextcloud/continuous-integration-postgres-10:postgres-10
     environment:
       POSTGRES_USER: oc_autotest
       POSTGRES_DB: oc_autotest_dummy
@@ -703,7 +703,7 @@ name: int-pgsql-conversation
 
 steps:
   - name: integration-conversation
-    image: nextcloudci/php7.3:php7.3-5
+    image: ghcr.io/nextcloud/continuous-integration-php7.3:php7.3-6
     environment:
       APP_NAME: spreed
       CORE_BRANCH: master
@@ -724,9 +724,9 @@ steps:
 
 services:
   - name: cache
-    image: redis
+    image: ghcr.io/nextcloud/continuous-integration-redis:latest
   - name: pgsql
-    image: postgres:10
+    image: ghcr.io/nextcloud/continuous-integration-postgres-10:postgres-10
     environment:
       POSTGRES_USER: oc_autotest
       POSTGRES_DB: oc_autotest_dummy
@@ -749,7 +749,7 @@ name: int-pgsql-conversation-2
 
 steps:
   - name: integration-conversation-2
-    image: nextcloudci/php7.3:php7.3-5
+    image: ghcr.io/nextcloud/continuous-integration-php7.3:php7.3-6
     environment:
       APP_NAME: spreed
       CORE_BRANCH: master
@@ -770,9 +770,9 @@ steps:
 
 services:
   - name: cache
-    image: redis
+    image: ghcr.io/nextcloud/continuous-integration-redis:latest
   - name: pgsql
-    image: postgres:10
+    image: ghcr.io/nextcloud/continuous-integration-postgres-10:postgres-10
     environment:
       POSTGRES_USER: oc_autotest
       POSTGRES_DB: oc_autotest_dummy
@@ -795,7 +795,7 @@ name: int-pgsql-sharing
 
 steps:
   - name: integration-sharing
-    image: nextcloudci/php7.3:php7.3-5
+    image: ghcr.io/nextcloud/continuous-integration-php7.3:php7.3-6
     environment:
       APP_NAME: spreed
       CORE_BRANCH: master
@@ -814,9 +814,9 @@ steps:
 
 services:
   - name: cache
-    image: redis
+    image: ghcr.io/nextcloud/continuous-integration-redis:latest
   - name: pgsql
-    image: postgres:10
+    image: ghcr.io/nextcloud/continuous-integration-postgres-10:postgres-10
     environment:
       POSTGRES_USER: oc_autotest
       POSTGRES_DB: oc_autotest_dummy
@@ -839,7 +839,7 @@ name: int-pgsql-sharing-2
 
 steps:
   - name: integration-sharing-2
-    image: nextcloudci/php7.3:php7.3-5
+    image: ghcr.io/nextcloud/continuous-integration-php7.3:php7.3-6
     environment:
       APP_NAME: spreed
       CORE_BRANCH: master
@@ -858,9 +858,9 @@ steps:
 
 services:
   - name: cache
-    image: redis
+    image: ghcr.io/nextcloud/continuous-integration-redis:latest
   - name: pgsql
-    image: postgres:10
+    image: ghcr.io/nextcloud/continuous-integration-postgres-10:postgres-10
     environment:
       POSTGRES_USER: oc_autotest
       POSTGRES_DB: oc_autotest_dummy
@@ -943,7 +943,7 @@ trigger:
 #
 #services:
 #  - name: cache
-#    image: redis
+#    image: ghcr.io/nextcloud/continuous-integration-redis:latest
 #  - name: selenium
 #    image: selenium/standalone-firefox:2.53.1-beryllium
 #    environment:
@@ -985,7 +985,7 @@ trigger:
 #
 #services:
 #  - name: cache
-#    image: redis
+#    image: ghcr.io/nextcloud/continuous-integration-redis:latest
 #  - name: selenium
 #    image: selenium/standalone-firefox:2.53.1-beryllium
 #    environment:
@@ -1027,7 +1027,7 @@ trigger:
 #
 #services:
 #  - name: cache
-#    image: redis
+#    image: ghcr.io/nextcloud/continuous-integration-redis:latest
 #  - name: selenium
 #    image: selenium/standalone-firefox:2.53.1-beryllium
 #    environment:
@@ -1109,7 +1109,7 @@ trigger:
 #
 #services:
 #  - name: cache
-#    image: redis
+#    image: ghcr.io/nextcloud/continuous-integration-redis:latest
 #  - name: selenium
 #    image: selenium/standalone-firefox:2.53.1-beryllium
 #    environment:
@@ -1151,7 +1151,7 @@ trigger:
 #
 #services:
 #  - name: cache
-#    image: redis
+#    image: ghcr.io/nextcloud/continuous-integration-redis:latest
 #  - name: selenium
 #    image: selenium/standalone-firefox:2.53.1-beryllium
 #    environment:
@@ -1193,7 +1193,7 @@ trigger:
 #
 #services:
 #  - name: cache
-#    image: redis
+#    image: ghcr.io/nextcloud/continuous-integration-redis:latest
 #  - name: selenium
 #    image: selenium/standalone-firefox:2.53.1-beryllium
 #    environment:

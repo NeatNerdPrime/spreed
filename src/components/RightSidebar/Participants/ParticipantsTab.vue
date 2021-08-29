@@ -28,7 +28,7 @@
 			:is-searching="isSearching"
 			@input="handleInput"
 			@abort-search="abortSearch" />
-		<Caption v-if="isSearching && canAdd"
+		<AppNavigationCaption v-if="isSearching && canAdd"
 			:title="t('spreed', 'Participants')" />
 		<CurrentParticipants
 			:search-text="searchText"
@@ -43,7 +43,6 @@
 </template>
 
 <script>
-import Caption from '../../Caption'
 import CurrentParticipants from './CurrentParticipants/CurrentParticipants'
 import SearchBox from '../../LeftSidebar/SearchBox/SearchBox'
 import debounce from 'debounce'
@@ -62,14 +61,15 @@ import CancelableRequest from '../../../utils/cancelableRequest'
 import Axios from '@nextcloud/axios'
 import { showError } from '@nextcloud/dialogs'
 import { emit } from '@nextcloud/event-bus'
+import AppNavigationCaption from '@nextcloud/vue/dist/Components/AppNavigationCaption'
 import ParticipantsSearchResults from './ParticipantsSearchResults/ParticipantsSearchResults'
 
 export default {
 	name: 'ParticipantsTab',
 	components: {
+		AppNavigationCaption,
 		CurrentParticipants,
 		SearchBox,
-		Caption,
 		ParticipantsSearchResults,
 	},
 
@@ -83,6 +83,10 @@ export default {
 			required: true,
 		},
 		canAdd: {
+			type: Boolean,
+			required: true,
+		},
+		isActive: {
 			type: Boolean,
 			required: true,
 		},
@@ -131,19 +135,19 @@ export default {
 	},
 
 	beforeMount() {
-		EventBus.$on('routeChange', this.onRouteChange)
-		EventBus.$on('joinedConversation', this.onJoinedConversation)
+		EventBus.$on('route-change', this.onRouteChange)
+		EventBus.$on('joined-conversation', this.onJoinedConversation)
 
 		// FIXME this works only temporary until signaling is fixed to be only on the calls
 		// Then we have to search for another solution. Maybe the room list which we update
 		// periodically gets a hash of all online sessions?
-		EventBus.$on('Signaling::participantListChanged', this.debounceUpdateParticipants)
+		EventBus.$on('signaling-participant-list-changed', this.debounceUpdateParticipants)
 	},
 
 	beforeDestroy() {
-		EventBus.$off('routeChange', this.onRouteChange)
-		EventBus.$off('joinedConversation', this.onJoinedConversation)
-		EventBus.$off('Signaling::participantListChanged', this.debounceUpdateParticipants)
+		EventBus.$off('route-change', this.onRouteChange)
+		EventBus.$off('joined-conversation', this.onJoinedConversation)
+		EventBus.$off('signaling-participant-list-changed', this.debounceUpdateParticipants)
 
 		this.cancelSearchPossibleConversations()
 		this.cancelSearchPossibleConversations = null
@@ -183,11 +187,28 @@ export default {
 			}
 		}, 250),
 
-		debounceUpdateParticipants: debounce(function() {
+		debounceUpdateParticipants() {
+			if (!this.$store.getters.windowIsVisible()
+				|| !this.$store.getters.getSidebarStatus
+				|| !this.isActive) {
+				this.debounceSlowUpdateParticipants()
+				return
+			}
+
+			this.debounceFastUpdateParticipants()
+		},
+
+		debounceSlowUpdateParticipants: debounce(function() {
 			if (!this.fetchingParticipants) {
 				this.cancelableGetParticipants()
 			}
-		}, 2000),
+		}, 15000),
+
+		debounceFastUpdateParticipants: debounce(function() {
+			if (!this.fetchingParticipants) {
+				this.cancelableGetParticipants()
+			}
+		}, 3000),
 
 		async fetchSearchResults() {
 			try {
@@ -213,7 +234,8 @@ export default {
 
 		/**
 		 * Add the selected group/user/circle to the conversation
-		 * @param {Object} item The autocomplete suggestion to start a conversation with
+		 *
+		 * @param {object} item The autocomplete suggestion to start a conversation with
 		 * @param {string} item.id The ID of the target
 		 * @param {string} item.source The source of the target
 		 */
@@ -249,13 +271,13 @@ export default {
 				const hasUserStatuses = !!participants.headers['x-nextcloud-has-user-statuses']
 				participants.data.ocs.data.forEach(participant => {
 					this.$store.dispatch('addParticipant', {
-						token: token,
+						token,
 						participant,
 					})
 					if (participant.participantType === PARTICIPANT.TYPE.GUEST
 						|| participant.participantType === PARTICIPANT.TYPE.GUEST_MODERATOR) {
 						this.$store.dispatch('forceGuestName', {
-							token: token,
+							token,
 							actorId: Hex.stringify(SHA1(participant.sessionIds[0])),
 							actorDisplayName: participant.displayName,
 						})

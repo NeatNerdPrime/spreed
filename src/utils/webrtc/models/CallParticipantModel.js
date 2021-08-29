@@ -2,7 +2,7 @@
  *
  * @copyright Copyright (c) 2019, Daniel Calviño Sánchez (danxuliu@gmail.com)
  *
- * @license GNU AGPL version 3 or any later version
+ * @license AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -33,6 +33,9 @@ export const ConnectionState = {
 	CLOSED: 'closed',
 }
 
+/**
+ * @param options
+ */
 export default function CallParticipantModel(options) {
 
 	this.attributes = {
@@ -86,7 +89,7 @@ export default function CallParticipantModel(options) {
 
 CallParticipantModel.prototype = {
 
-	destroy: function() {
+	destroy() {
 		if (this.get('peer')) {
 			this.get('peer').off('extendedIceConnectionStateChange', this._handleExtendedIceConnectionStateChangeBound)
 		}
@@ -97,27 +100,28 @@ CallParticipantModel.prototype = {
 		this._webRtc.off('mute', this._handleMuteBound)
 		this._webRtc.off('unmute', this._handleUnmuteBound)
 		this._webRtc.off('channelMessage', this._handleChannelMessageBound)
+		this._webRtc.off('raisedHand', this._handleRaisedHandBound)
 	},
 
-	get: function(key) {
+	get(key) {
 		return this.attributes[key]
 	},
 
-	set: function(key, value) {
+	set(key, value) {
 		this.attributes[key] = value
 
 		this._trigger('change:' + key, [value])
 	},
 
-	on: function(event, handler) {
-		if (!this._handlers.hasOwnProperty(event)) {
+	on(event, handler) {
+		if (!Object.prototype.hasOwnProperty.call(this._handlers, event)) {
 			this._handlers[event] = [handler]
 		} else {
 			this._handlers[event].push(handler)
 		}
 	},
 
-	off: function(event, handler) {
+	off(event, handler) {
 		const handlers = this._handlers[event]
 		if (!handlers) {
 			return
@@ -129,7 +133,7 @@ CallParticipantModel.prototype = {
 		}
 	},
 
-	_trigger: function(event, args) {
+	_trigger(event, args) {
 		let handlers = this._handlers[event]
 		if (!handlers) {
 			return
@@ -148,7 +152,7 @@ CallParticipantModel.prototype = {
 		}
 	},
 
-	_handlePeerStreamAdded: function(peer) {
+	_handlePeerStreamAdded(peer) {
 		if (this.get('peer') === peer) {
 			this.set('stream', this.get('peer').stream || null)
 			this.set('audioElement', attachMediaStream(this.get('stream'), null, { audio: true }))
@@ -163,7 +167,7 @@ CallParticipantModel.prototype = {
 		}
 	},
 
-	_handlePeerStreamRemoved: function(peer) {
+	_handlePeerStreamRemoved(peer) {
 		if (this.get('peer') === peer) {
 			this.get('audioElement').srcObject = null
 			this.set('audioElement', null)
@@ -176,7 +180,7 @@ CallParticipantModel.prototype = {
 		}
 	},
 
-	_handleNick: function(data) {
+	_handleNick(data) {
 		// The nick could be changed even if there is no Peer object.
 		if (this.get('peerId') !== data.id) {
 			return
@@ -185,7 +189,7 @@ CallParticipantModel.prototype = {
 		this.set('name', data.name || null)
 	},
 
-	_handleMute: function(data) {
+	_handleMute(data) {
 		if (!this.get('peer') || this.get('peer').id !== data.id) {
 			return
 		}
@@ -201,7 +205,7 @@ CallParticipantModel.prototype = {
 		}
 	},
 
-	forceMute: function() {
+	forceMute() {
 		if (!this.get('peer')) {
 			return
 		}
@@ -216,7 +220,7 @@ CallParticipantModel.prototype = {
 		this._handleMute({ id: this.get('peer').id })
 	},
 
-	_handleUnmute: function(data) {
+	_handleUnmute(data) {
 		if (!this.get('peer') || this.get('peer').id !== data.id) {
 			return
 		}
@@ -231,7 +235,7 @@ CallParticipantModel.prototype = {
 		}
 	},
 
-	_handleChannelMessage: function(peer, label, data) {
+	_handleChannelMessage(peer, label, data) {
 		if (!this.get('peer') || this.get('peer').id !== peer.id) {
 			return
 		}
@@ -247,15 +251,16 @@ CallParticipantModel.prototype = {
 		}
 	},
 
-	_handleRaisedHand: function(data) {
-		if (!this.get('peer') || this.get('peer').id !== data.id) {
+	_handleRaisedHand(data) {
+		// The hand could be raised even if there is no Peer object.
+		if (this.get('peerId') !== data.id) {
 			return
 		}
 
 		this.set('raisedHand', data.raised)
 	},
 
-	setPeer: function(peer) {
+	setPeer(peer) {
 		if (peer && this.get('peerId') !== peer.id) {
 			console.warn('Mismatch between stored peer ID and ID of given peer: ', this.get('peerId'), peer.id)
 		}
@@ -283,7 +288,7 @@ CallParticipantModel.prototype = {
 		this.get('peer').on('extendedIceConnectionStateChange', this._handleExtendedIceConnectionStateChangeBound)
 	},
 
-	_handleExtendedIceConnectionStateChange: function(extendedIceConnectionState) {
+	_handleExtendedIceConnectionStateChange(extendedIceConnectionState) {
 		// Ensure that the name is set, as when the MCU is not used it will
 		// not be set later for registered users without microphone nor
 		// camera.
@@ -334,7 +339,7 @@ CallParticipantModel.prototype = {
 		}
 	},
 
-	setScreenPeer: function(screenPeer) {
+	setScreenPeer(screenPeer) {
 		if (screenPeer && this.get('peerId') !== screenPeer.id) {
 			console.warn('Mismatch between stored peer ID and ID of given screen peer: ', this.get('peerId'), screenPeer.id)
 		}
@@ -345,12 +350,30 @@ CallParticipantModel.prototype = {
 		this._handlePeerStreamAdded(this.get('screenPeer'))
 	},
 
-	setUserId: function(userId) {
+	setUserId(userId) {
 		this.set('userId', userId)
 	},
 
-	setNextcloudSessionId: function(nextcloudSessionId) {
+	setNextcloudSessionId(nextcloudSessionId) {
 		this.set('nextcloudSessionId', nextcloudSessionId)
+	},
+
+	setSimulcastVideoQuality(simulcastVideoQuality) {
+		if (!this.get('peer') || !this.get('peer').enableSimulcast) {
+			return
+		}
+
+		// Use same quality for simulcast and temporal layer.
+		this.get('peer').selectSimulcastStream(simulcastVideoQuality, simulcastVideoQuality)
+	},
+
+	setSimulcastScreenQuality(simulcastScreenQuality) {
+		if (!this.get('screenPeer') || !this.get('screenPeer').enableSimulcast) {
+			return
+		}
+
+		// Use same quality for simulcast and temporal layer.
+		this.get('screenPeer').selectSimulcastStream(simulcastScreenQuality, simulcastScreenQuality)
 	},
 
 }

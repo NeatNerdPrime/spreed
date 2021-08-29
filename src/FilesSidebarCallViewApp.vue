@@ -90,7 +90,7 @@ export default {
 		 * Note that false is returned too when the sidebar is closed, even if
 		 * the conversation is active in the current file.
 		 *
-		 * @returns {Boolean} true if the sidebar is opened in the file, false
+		 * @return {boolean} true if the sidebar is opened in the file, false
 		 *          otherwise.
 		 */
 		isInFile() {
@@ -113,7 +113,7 @@ export default {
 	},
 
 	watch: {
-		showCallView: function(showCallView) {
+		showCallView(showCallView) {
 			if (showCallView) {
 				this.replaceSidebarHeaderContentsWithCallView()
 			} else {
@@ -130,9 +130,9 @@ export default {
 		 * when the FileInfo has been set and it does not match the current
 		 * conversation.
 		 *
-		 * @param {Object} fileInfo the watched FileInfo
+		 * @param {object} fileInfo the watched FileInfo
 		 */
-		fileInfo: function(fileInfo) {
+		fileInfo(fileInfo) {
 			if (!fileInfo) {
 				return
 			}

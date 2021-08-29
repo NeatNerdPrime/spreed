@@ -55,11 +55,22 @@ class Room {
 	 */
 	public const SIP_INCOMPATIBLE_REGEX = '/((\d)(?=\2+)|^0|\D)/';
 
-	public const UNKNOWN_CALL = -1;
-	public const ONE_TO_ONE_CALL = 1;
-	public const GROUP_CALL = 2;
-	public const PUBLIC_CALL = 3;
-	public const CHANGELOG_CONVERSATION = 4;
+	public const TYPE_UNKNOWN = -1;
+	public const TYPE_ONE_TO_ONE = 1;
+	public const TYPE_GROUP = 2;
+	public const TYPE_PUBLIC = 3;
+	public const TYPE_CHANGELOG = 4;
+
+	/** @deprecated Use self::TYPE_UNKNOWN */
+	public const UNKNOWN_CALL = self::TYPE_UNKNOWN;
+	/** @deprecated Use self::TYPE_ONE_TO_ONE */
+	public const ONE_TO_ONE_CALL = self::TYPE_ONE_TO_ONE;
+	/** @deprecated Use self::TYPE_GROUP */
+	public const GROUP_CALL = self::TYPE_GROUP;
+	/** @deprecated Use self::TYPE_PUBLIC */
+	public const PUBLIC_CALL = self::TYPE_PUBLIC;
+	/** @deprecated Use self::TYPE_CHANGELOG */
+	public const CHANGELOG_CONVERSATION = self::TYPE_CHANGELOG;
 
 	public const READ_WRITE = 0;
 	public const READ_ONLY = 1;
@@ -109,6 +120,8 @@ class Room {
 	public const EVENT_AFTER_USERS_ADD = self::class . '::postAddUsers';
 	public const EVENT_BEFORE_PARTICIPANT_TYPE_SET = self::class . '::preSetParticipantType';
 	public const EVENT_AFTER_PARTICIPANT_TYPE_SET = self::class . '::postSetParticipantType';
+	public const EVENT_BEFORE_PARTICIPANT_PUBLISHING_PERMISSIONS_SET = self::class . '::preSetParticipantPublishingPermissions';
+	public const EVENT_AFTER_PARTICIPANT_PUBLISHING_PERMISSIONS_SET = self::class . '::postSetParticipantPublishingPermissions';
 	public const EVENT_BEFORE_USER_REMOVE = self::class . '::preRemoveUser';
 	public const EVENT_AFTER_USER_REMOVE = self::class . '::postRemoveUser';
 	public const EVENT_BEFORE_PARTICIPANT_REMOVE = self::class . '::preRemoveBySession';
@@ -124,6 +137,8 @@ class Room {
 	public const EVENT_AFTER_GUESTS_CLEAN = self::class . '::postCleanGuests';
 	public const EVENT_BEFORE_SESSION_JOIN_CALL = self::class . '::preSessionJoinCall';
 	public const EVENT_AFTER_SESSION_JOIN_CALL = self::class . '::postSessionJoinCall';
+	public const EVENT_BEFORE_SESSION_UPDATE_CALL_FLAGS = self::class . '::preSessionUpdateCallFlags';
+	public const EVENT_AFTER_SESSION_UPDATE_CALL_FLAGS = self::class . '::postSessionUpdateCallFlags';
 	public const EVENT_BEFORE_SESSION_LEAVE_CALL = self::class . '::preSessionLeaveCall';
 	public const EVENT_AFTER_SESSION_LEAVE_CALL = self::class . '::postSessionLeaveCall';
 	public const EVENT_BEFORE_SIGNALING_PROPERTIES = self::class . '::beforeSignalingProperties';
@@ -165,6 +180,8 @@ class Room {
 	private $description;
 	/** @var string */
 	private $password;
+	/** @var string */
+	private $serverUrl;
 	/** @var int */
 	private $activeGuests;
 	/** @var int */
@@ -203,6 +220,7 @@ class Room {
 								string $name,
 								string $description,
 								string $password,
+								string $serverUrl,
 								int $activeGuests,
 								int $callFlag,
 								?\DateTime $activeSince,
@@ -228,6 +246,7 @@ class Room {
 		$this->name = $name;
 		$this->description = $description;
 		$this->password = $password;
+		$this->serverUrl = $serverUrl;
 		$this->activeGuests = $activeGuests;
 		$this->callFlag = $callFlag;
 		$this->activeSince = $activeSince;
@@ -360,6 +379,14 @@ class Room {
 
 	public function getPassword(): string {
 		return $this->password;
+	}
+
+	public function getServerUrl(): string {
+		return $this->serverUrl;
+	}
+
+	public function isFederatedRemoteRoom(): bool {
+		return $this->serverUrl !== '';
 	}
 
 	public function setParticipant(?string $userId, Participant $participant): void {
@@ -813,12 +840,12 @@ class Room {
 	 * @param int $newType Currently it is only allowed to change between `self::GROUP_CALL` and `self::PUBLIC_CALL`
 	 * @return bool True when the change was valid, false otherwise
 	 */
-	public function setType(int $newType): bool {
+	public function setType(int $newType, bool $allowSwitchingOneToOne = false): bool {
 		if ($newType === $this->getType()) {
 			return true;
 		}
 
-		if ($this->getType() === self::ONE_TO_ONE_CALL) {
+		if (!$allowSwitchingOneToOne && $this->getType() === self::ONE_TO_ONE_CALL) {
 			return false;
 		}
 

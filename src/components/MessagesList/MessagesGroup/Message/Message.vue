@@ -132,7 +132,8 @@ the main body of the message as well as a quote.
 						</Actions>
 						<Actions
 							:force-menu="true"
-							container="#content-vue">
+							:container="container"
+							:boundaries-element="containerElement">
 							<ActionButton
 								v-if="isPrivateReplyable"
 								icon="icon-user"
@@ -149,7 +150,30 @@ the main body of the message as well as a quote.
 							<ActionButton
 								:close-after-click="true"
 								@click.stop="handleMarkAsUnread">
+								<template #icon>
+									<EyeOffOutline
+										decorative
+										title=""
+										:size="16" />
+								</template>
 								{{ t('spreed', 'Mark as unread') }}
+							</ActionButton>
+							<ActionLink
+								v-if="linkToFile"
+								icon="icon-text"
+								:href="linkToFile">
+								{{ t('spreed', 'Go to file') }}
+							</ActionLink>
+							<ActionButton
+								v-if="!isCurrentGuest && !isFileShare"
+								:close-after-click="true"
+								@click.stop="showForwarder = true">
+								<Share
+									slot="icon"
+									:size="16"
+									decorative
+									title="" />
+								{{ t('spreed', 'Forward message') }}
 							</ActionButton>
 							<ActionSeparator v-if="messageActions.length > 0" />
 							<template
@@ -182,11 +206,15 @@ the main body of the message as well as a quote.
 				<span>{{ t('spreed', 'Unread messages') }}</span>
 			</div>
 		</div>
+		<Forwarder v-if="showForwarder"
+			:message-object="messageObject"
+			@close="showForwarder = false" />
 	</li>
 </template>
 
 <script>
 import ActionButton from '@nextcloud/vue/dist/Components/ActionButton'
+import ActionLink from '@nextcloud/vue/dist/Components/ActionLink'
 import Actions from '@nextcloud/vue/dist/Components/Actions'
 import ActionSeparator from '@nextcloud/vue/dist/Components/ActionSeparator'
 import Tooltip from '@nextcloud/vue/dist/Directives/Tooltip'
@@ -199,7 +227,9 @@ import RichText from '@juliushaertl/vue-richtext'
 import AlertCircle from 'vue-material-design-icons/AlertCircle'
 import Check from 'vue-material-design-icons/Check'
 import CheckAll from 'vue-material-design-icons/CheckAll'
+import EyeOffOutline from 'vue-material-design-icons/EyeOffOutline'
 import Reload from 'vue-material-design-icons/Reload'
+import Share from 'vue-material-design-icons/Share'
 import Quote from '../../../Quote'
 import isInCall from '../../../../mixins/isInCall'
 import participant from '../../../../mixins/participant'
@@ -213,8 +243,10 @@ import {
 	showWarning,
 	TOAST_DEFAULT_TIMEOUT,
 } from '@nextcloud/dialogs'
-import { createOneToOneConversation } from '../../../../services/conversationsService'
 import { generateUrl } from '@nextcloud/router'
+import Location from './MessagePart/Location'
+import Contact from './MessagePart/Contact.vue'
+import Forwarder from './MessagePart/Forwarder'
 
 export default {
 	name: 'Message',
@@ -226,14 +258,18 @@ export default {
 	components: {
 		Actions,
 		ActionButton,
+		ActionLink,
 		CallButton,
 		Quote,
 		RichText,
 		AlertCircle,
 		Check,
 		CheckAll,
+		EyeOffOutline,
 		Reload,
+		Share,
 		ActionSeparator,
+		Forwarder,
 	},
 
 	mixins: [
@@ -330,7 +366,7 @@ export default {
 			required: true,
 		},
 		/**
-		 * The conversation token.
+		 * The type of system message
 		 */
 		systemMessage: {
 			type: String,
@@ -380,11 +416,17 @@ export default {
 			isDeleting: false,
 			// whether the message was seen, only used if this was marked as last read message
 			seen: false,
+			// Shows/hides the message forwarder component
+			showForwarder: false,
 		}
 	},
 
 	computed: {
 		isLastReadMessage() {
+			if (!this.nextMessageId) {
+				// never display indicator on the very last message
+				return false
+			}
 			// note: not reading lastReadMessage from the conversation as we want to define it externally
 			// to have closer control on marker's visibility behavior
 			return this.id === this.lastReadMessageId
@@ -443,7 +485,9 @@ export default {
 		},
 
 		isLastCallStartedMessage() {
+			// FIXME: remove dependency to messages list and convert to property
 			const messages = this.messagesList
+			// FIXME: don't reverse the whole array as it would create a copy, just do an actual reverse search
 			const lastCallStartedMessage = messages.reverse().find((message) => message.systemMessage === 'call_started')
 			return lastCallStartedMessage ? (this.id === lastCallStartedMessage.id) : false
 		},
@@ -478,19 +522,32 @@ export default {
 			const richParameters = {}
 			Object.keys(this.messageParameters).forEach(function(p) {
 				const type = this.messageParameters[p].type
+				const mimetype = this.messageParameters[p].mimetype
 				if (type === 'user' || type === 'call' || type === 'guest') {
 					richParameters[p] = {
 						component: Mention,
 						props: this.messageParameters[p],
 					}
-				} else if (type === 'file') {
+				} else if (type === 'file' && mimetype !== 'text/vcard') {
+					const parameters = this.messageParameters[p]
+					parameters['is-voice-message'] = this.messageType === 'voice-message'
 					richParameters[p] = {
 						component: FilePreview,
-						props: this.messageParameters[p],
+						props: parameters,
 					}
 				} else if (type === 'deck-card') {
 					richParameters[p] = {
 						component: DeckCard,
+						props: this.messageParameters[p],
+					}
+				} else if (type === 'geo-location') {
+					richParameters[p] = {
+						component: Location,
+						props: this.messageParameters[p],
+					}
+				} else if (mimetype === 'text/vcard') {
+					richParameters[p] = {
+						component: Contact,
 						props: this.messageParameters[p],
 					}
 				} else {
@@ -514,7 +571,15 @@ export default {
 		},
 
 		hasActions() {
-			return !this.isSystemMessage
+			return !this.isSystemMessage && !this.isTemporary
+		},
+
+		container() {
+			return this.$store.getters.getMainContainerSelector()
+		},
+
+		containerElement() {
+			return document.querySelector(this.container)
 		},
 
 		isTemporaryUpload() {
@@ -544,6 +609,9 @@ export default {
 			if (this.sendingFailure === 'quota') {
 				return t('spreed', 'Not enough free space to upload file')
 			}
+			if (this.sendingFailure === 'failed-share') {
+				return t('spreed', 'You are not allowed to share files')
+			}
 			return t('spreed', 'You cannot send messages to this conversation at the moment')
 		},
 
@@ -552,18 +620,30 @@ export default {
 				&& this.actorType === this.$store.getters.getActorType()
 		},
 
+		isFileShare() {
+			return this.message === '{file}' && this.messageParameters?.file
+		},
+
+		linkToFile() {
+			if (this.isFileShare) {
+				return this.messageParameters?.file?.link
+			}
+			return ''
+		},
+
 		isDeleteable() {
 			if (this.isConversationReadOnly) {
 				return false
 			}
 
-			const isFileShare = this.message === '{file}'
-				&& this.messageParameters?.file
+			const isObjectShare = this.message === '{object}'
+				&& this.messageParameters?.object
 
 			return (moment(this.timestamp * 1000).add(6, 'h')) > moment()
 				&& this.messageType === 'comment'
 				&& !this.isDeleting
-				&& !isFileShare
+				&& !this.isFileShare
+				&& !isObjectShare
 				&& (this.isMyMsg
 					|| (this.conversation.type !== CONVERSATION.TYPE.ONE_TO_ONE
 						&& (this.participant.participantType === PARTICIPANT.TYPE.OWNER
@@ -590,11 +670,15 @@ export default {
 				apiVersion: 'v3',
 			}
 		},
+
+		isCurrentGuest() {
+			return this.$store.getters.getActorType() === 'guests'
+		},
 	},
 
 	watch: {
 		showJoinCallButton() {
-			EventBus.$emit('scrollChatToBottom')
+			EventBus.$emit('scroll-chat-to-bottom')
 		},
 	},
 
@@ -634,8 +718,8 @@ export default {
 		},
 		handleRetry() {
 			if (this.sendingErrorCanRetry) {
-				EventBus.$emit('retryMessage', this.id)
-				EventBus.$emit('focusChatInput')
+				EventBus.$emit('retry-message', this.id)
+				EventBus.$emit('focus-chat-input')
 			}
 		},
 		handleReply() {
@@ -651,7 +735,7 @@ export default {
 				messageParameters: this.messageParameters,
 				token: this.token,
 			})
-			EventBus.$emit('focusChatInput')
+			EventBus.$emit('focus-chat-input')
 		},
 		async handleDelete() {
 			this.isDeleting = true
@@ -696,9 +780,7 @@ export default {
 		},
 		async handlePrivateReply() {
 			// open the 1:1 conversation
-			const response = await createOneToOneConversation(this.actorId)
-			const conversation = response.data.ocs.data
-			this.$store.dispatch('addConversation', conversation)
+			const conversation = await this.$store.dispatch('createOneToOneConversation', this.actorId)
 			this.$router.push({ name: 'conversation', params: { token: conversation.token } }).catch(err => console.debug(`Error while pushing the new conversation's route: ${err}`))
 		},
 
@@ -708,6 +790,7 @@ export default {
 				await this.$copyText(link)
 				showSuccess(t('spreed', 'Message link copied to clipboard.'))
 			} catch (error) {
+				console.error('Error copying link: ', error)
 				showError(t('spreed', 'The link could not be copied.'))
 			}
 		},

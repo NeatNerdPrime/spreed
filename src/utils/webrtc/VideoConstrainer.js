@@ -2,7 +2,7 @@
  *
  * @copyright Copyright (c) 2020, Daniel Calviño Sánchez (danxuliu@gmail.com)
  *
- * @license GNU AGPL version 3 or any later version
+ * @license AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -45,15 +45,15 @@ const QUALITY = {
 function VideoConstrainer(localMediaModel) {
 	this._localMediaModel = localMediaModel
 
-	// By default the constraints used when getting the video try to get the
-	// highest quality
-	this._currentQuality = QUALITY.HIGH
+	// The current quality is undefined until the constraints are applied at
+	// least once.
+	this._currentQuality = undefined
 
 	this._knownValidConstraintsForQuality = {}
 }
 VideoConstrainer.prototype = {
 
-	applyConstraints: async function(quality) {
+	async applyConstraints(quality) {
 		if (quality === this._currentQuality) {
 			return
 		}
@@ -82,7 +82,7 @@ VideoConstrainer.prototype = {
 		this._currentQuality = quality
 	},
 
-	_applyRoughConstraints: async function(localVideoTrack, quality) {
+	async _applyRoughConstraints(localVideoTrack, quality) {
 		let constraints = this._knownValidConstraintsForQuality[quality]
 		if (!constraints) {
 			constraints = this._getConstraintsForQuality(quality)
@@ -125,7 +125,7 @@ VideoConstrainer.prototype = {
 		}
 	},
 
-	_applyRoughResolutionConstraints: async function(localVideoTrack, constraints) {
+	async _applyRoughResolutionConstraints(localVideoTrack, constraints) {
 		try {
 			await localVideoTrack.applyConstraints(constraints)
 
@@ -142,7 +142,7 @@ VideoConstrainer.prototype = {
 		}
 	},
 
-	_applyRoughFrameRateConstraints: async function(localVideoTrack, constraints) {
+	async _applyRoughFrameRateConstraints(localVideoTrack, constraints) {
 		try {
 			await localVideoTrack.applyConstraints(constraints)
 
@@ -159,7 +159,7 @@ VideoConstrainer.prototype = {
 		}
 	},
 
-	_getConstraintsForQuality: function(quality) {
+	_getConstraintsForQuality(quality) {
 		if (quality === QUALITY.HIGH) {
 			return {
 				width: {
@@ -245,7 +245,7 @@ VideoConstrainer.prototype = {
 		}
 	},
 
-	_increaseMaxResolution: function(constraints) {
+	_increaseMaxResolution(constraints) {
 		let changed = false
 
 		if (constraints.width && constraints.width.max) {
@@ -263,25 +263,25 @@ VideoConstrainer.prototype = {
 		return changed
 	},
 
-	_decreaseMinResolution: function(constraints) {
+	_decreaseMinResolution(constraints) {
 		let changed = false
 
 		if (constraints.width && constraints.width.min) {
 			const previousWidthMin = constraints.width.min
-			constraints.width.min = Math.min(Math.round(constraints.width.min / 1.5), 64)
+			constraints.width.min = Math.max(Math.round(constraints.width.min / 1.5), 64)
 			changed = previousWidthMin !== constraints.width.min
 		}
 
 		if (constraints.height && constraints.height.min) {
 			const previousHeightMin = constraints.height.min
-			constraints.height.min = Math.min(Math.round(constraints.height.min / 1.5), 64)
+			constraints.height.min = Math.max(Math.round(constraints.height.min / 1.5), 64)
 			changed = previousHeightMin !== constraints.height.min
 		}
 
 		return changed
 	},
 
-	_increaseMaxFrameRate: function(constraints) {
+	_increaseMaxFrameRate(constraints) {
 		let changed = false
 
 		if (constraints.frameRate && constraints.frameRate.max) {
@@ -293,12 +293,12 @@ VideoConstrainer.prototype = {
 		return changed
 	},
 
-	_decreaseMinFrameRate: function(constraints) {
+	_decreaseMinFrameRate(constraints) {
 		let changed = false
 
 		if (constraints.frameRate && constraints.frameRate.min) {
-			const previousFrameRateMin = constraints.frameRate.max
-			constraints.frameRate.min = Math.min(Math.round(constraints.frameRate.min / 1.5), 1)
+			const previousFrameRateMin = constraints.frameRate.min
+			constraints.frameRate.min = Math.max(Math.round(constraints.frameRate.min / 1.5), 1)
 			changed = previousFrameRateMin !== constraints.frameRate.min
 		}
 

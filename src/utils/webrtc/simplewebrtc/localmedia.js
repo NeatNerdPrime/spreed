@@ -5,10 +5,14 @@ const hark = require('hark')
 const getScreenMedia = require('./getscreenmedia')
 const WildEmitter = require('wildemitter')
 const mockconsole = require('mockconsole')
+const UAParser = require('ua-parser-js')
 // Only mediaDevicesManager is used, but it can not be assigned here due to not
 // being initialized yet.
 const webrtcIndex = require('../index.js')
 
+/**
+ * @param stream
+ */
 function isAllTracksEnded(stream) {
 	let isAllTracksEnded = true
 	stream.getTracks().forEach(function(t) {
@@ -17,6 +21,9 @@ function isAllTracksEnded(stream) {
 	return isAllTracksEnded
 }
 
+/**
+ * @param stream
+ */
 function isAllAudioTracksEnded(stream) {
 	let isAllAudioTracksEnded = true
 	stream.getAudioTracks().forEach(function(t) {
@@ -25,23 +32,22 @@ function isAllAudioTracksEnded(stream) {
 	return isAllAudioTracksEnded
 }
 
+/**
+ * @param opts
+ */
 function LocalMedia(opts) {
 	WildEmitter.call(this)
 
 	const config = this.config = {
 		detectSpeakingEvents: false,
 		audioFallback: false,
-		media: {
-			audio: true,
-			video: true,
-		},
 		harkOptions: null,
 		logger: mockconsole,
 	}
 
 	let item
 	for (item in opts) {
-		if (opts.hasOwnProperty(item)) {
+		if (Object.prototype.hasOwnProperty.call(opts, item)) {
 			this.config[item] = opts[item]
 		}
 	}
@@ -52,6 +58,8 @@ function LocalMedia(opts) {
 
 	this._audioEnabled = true
 	this._videoEnabled = true
+
+	this._localMediaActive = false
 
 	this.localStreams = []
 	this._audioMonitorStreams = []
@@ -75,7 +83,7 @@ util.inherits(LocalMedia, WildEmitter)
  * MediaStreamTrack is ended.
  *
  * @param {MediaStreamTrack} track the track to clone
- * @returns {MediaStreamTrack} the linked track
+ * @return {MediaStreamTrack} the linked track
  */
 const cloneLinkedTrack = function(track) {
 	const linkedTrack = track.clone()
@@ -99,7 +107,7 @@ const cloneLinkedTrack = function(track) {
  * ended.
  *
  * @param {MediaStream} stream the stream to clone
- * @returns {MediaStream} the linked stream
+ * @return {MediaStream} the linked stream
  */
 const cloneLinkedStream = function(stream) {
 	const linkedStream = new MediaStream()
@@ -121,9 +129,80 @@ const cloneLinkedStream = function(stream) {
 	return linkedStream
 }
 
+/**
+ * Returns whether the local media is active or not.
+ *
+ * The local media is active if it has been started and not stopped yet, even if
+ * no media was available when started. An active local media will automatically
+ * react to changes in the selected media devices.
+ *
+ * @return {bool} true if the local media is active, false otherwise
+ */
+LocalMedia.prototype.isLocalMediaActive = function() {
+	return this._localMediaActive
+}
+
+/**
+ * Adjusts video constraints to work around bug in Chromium.
+ *
+ * In Chromium it is not possible to increase the resolution of a track once it
+ * has been cloned, so the track needs to be initialized with a high resolution
+ * (otherwise real devices are initialized with a resolution around 640x480).
+ * Therefore, the video is requested with a loose constraint for a high
+ * resolution, so if the camera does not have such resolution it will still
+ * return the highest resolution available without failing.
+ *
+ * A high frame rate needs to be requested too, as some cameras offer high
+ * resolution but with low frame rates, so Chromium could end providing a laggy
+ * high resolution video. If the frame rate is requested too then Chromium needs
+ * to balance all the constraints and thus provide a video without the highest
+ * resolution but with an acceptable frame rate.
+ *
+ * @param {object} constraints the constraints to be adjusted
+ */
+LocalMedia.prototype._adjustVideoConstraintsForChromium = function(constraints) {
+	const parser = new UAParser()
+	const browserName = parser.getBrowser().name
+
+	if (browserName !== 'Chrome'
+		&& browserName !== 'Chromium'
+		&& browserName !== 'Opera'
+		&& browserName !== 'Safari'
+		&& browserName !== 'Mobile Safari'
+		&& browserName !== 'Edge') {
+		return
+	}
+
+	if (!constraints.video) {
+		return
+	}
+
+	if (!(constraints.video instanceof Object)) {
+		constraints.video = {}
+	}
+
+	constraints.video.width = 1920
+	constraints.video.height = 1200
+	constraints.video.frameRate = 60
+}
+
 LocalMedia.prototype.start = function(mediaConstraints, cb, context) {
 	const self = this
-	const constraints = mediaConstraints || this.config.media
+	const constraints = mediaConstraints || { audio: true, video: true }
+
+	// If local media is started with neither audio nor video the local media
+	// will not be active (it will not react to changes in the selected media
+	// devices). It is just a special case in which starting succeeds with a null
+	// stream.
+	if (!constraints.audio && !constraints.video) {
+		self.emit('localStream', constraints, null)
+
+		if (cb) {
+			return cb(null, null, constraints)
+		}
+
+		return
+	}
 
 	if (!webrtcIndex.mediaDevicesManager.isSupported()) {
 		const error = new Error('MediaStreamError')
@@ -143,6 +222,12 @@ LocalMedia.prototype.start = function(mediaConstraints, cb, context) {
 		webrtcIndex.mediaDevicesManager.enableDeviceEvents()
 		webrtcIndex.mediaDevicesManager.disableDeviceEvents()
 	}
+
+	this._adjustVideoConstraintsForChromium(constraints)
+
+	// The handlers for "change:audioInputId" and "change:videoInputId" events
+	// expect the initial "getUserMedia" call to have been completed before
+	// being used, so they must be set when the promise is resolved or rejected.
 
 	webrtcIndex.mediaDevicesManager.getUserMedia(constraints).then(function(stream) {
 		// Although the promise should be resolved only if all the constraints
@@ -182,13 +267,15 @@ LocalMedia.prototype.start = function(mediaConstraints, cb, context) {
 		webrtcIndex.mediaDevicesManager.on('change:audioInputId', self._handleAudioInputIdChangedBound)
 		webrtcIndex.mediaDevicesManager.on('change:videoInputId', self._handleVideoInputIdChangedBound)
 
+		self._localMediaActive = true
+
 		if (cb) {
-			return cb(null, stream)
+			return cb(null, stream, constraints)
 		}
 	}).catch(function(err) {
 		// Fallback for users without a camera or with a camera that can not be
-		// accessed.
-		if (self.config.audioFallback && constraints.video !== false) {
+		// accessed, but only if audio is meant to be used.
+		if (constraints.audio !== false && self.config.audioFallback && constraints.video !== false) {
 			self.emit('localStreamRequestFailedRetryNoVideo', constraints, err)
 			constraints.video = false
 			self.start(constraints, cb, 'retry-no-video')
@@ -196,6 +283,11 @@ LocalMedia.prototype.start = function(mediaConstraints, cb, context) {
 		}
 
 		self.emit('localStreamRequestFailed', constraints)
+
+		webrtcIndex.mediaDevicesManager.on('change:audioInputId', self._handleAudioInputIdChangedBound)
+		webrtcIndex.mediaDevicesManager.on('change:videoInputId', self._handleVideoInputIdChangedBound)
+
+		self._localMediaActive = true
 
 		if (cb) {
 			return cb(err, null)
@@ -426,7 +518,10 @@ LocalMedia.prototype._handleVideoInputIdChanged = function(mediaDevicesManager, 
 		return
 	}
 
-	webrtcIndex.mediaDevicesManager.getUserMedia({ video: true }).then(stream => {
+	const constraints = { video: true }
+	this._adjustVideoConstraintsForChromium(constraints)
+
+	webrtcIndex.mediaDevicesManager.getUserMedia(constraints).then(stream => {
 		// According to the specification "getUserMedia({ video: true })" will
 		// return a single video track.
 		const track = stream.getTracks()[0]
@@ -484,10 +579,10 @@ LocalMedia.prototype.stop = function(stream) {
 	this.stopStream(stream)
 	this.stopScreenShare(stream)
 
-	if (!this.localStreams.length) {
-		webrtcIndex.mediaDevicesManager.off('change:audioInputId', this._handleAudioInputIdChangedBound)
-		webrtcIndex.mediaDevicesManager.off('change:videoInputId', this._handleVideoInputIdChangedBound)
-	}
+	webrtcIndex.mediaDevicesManager.off('change:audioInputId', this._handleAudioInputIdChangedBound)
+	webrtcIndex.mediaDevicesManager.off('change:videoInputId', this._handleVideoInputIdChangedBound)
+
+	this._localMediaActive = false
 }
 
 LocalMedia.prototype.stopStream = function(stream) {
@@ -598,18 +693,26 @@ LocalMedia.prototype.resume = function() {
 LocalMedia.prototype._setAudioEnabled = function(bool) {
 	this._audioEnabled = bool
 
-	this.localStreams.forEach(function(stream) {
-		stream.getAudioTracks().forEach(function(track) {
+	this.localStreams.forEach(stream => {
+		stream.getAudioTracks().forEach(track => {
 			track.enabled = !!bool
+
+			// MediaStreamTrack does not emit an event when the enabled property
+			// changes, so it needs to be explicitly notified.
+			this.emit('localTrackEnabledChanged', track, stream)
 		})
 	})
 }
 LocalMedia.prototype._setVideoEnabled = function(bool) {
 	this._videoEnabled = bool
 
-	this.localStreams.forEach(function(stream) {
-		stream.getVideoTracks().forEach(function(track) {
+	this.localStreams.forEach(stream => {
+		stream.getVideoTracks().forEach(track => {
 			track.enabled = !!bool
+
+			// MediaStreamTrack does not emit an event when the enabled property
+			// changes, so it needs to be explicitly notified.
+			this.emit('localTrackEnabledChanged', track, stream)
 		})
 	})
 }
@@ -733,7 +836,7 @@ LocalMedia.prototype._setupAudioMonitor = function(stream, harkOptions) {
 		self.emit('volumeChange', volume, threshold)
 	})
 
-	this._audioMonitors.push({ audio: audio, stream: stream })
+	this._audioMonitors.push({ audio, stream })
 }
 
 LocalMedia.prototype._stopAudioMonitor = function(stream) {
@@ -752,7 +855,7 @@ LocalMedia.prototype._stopAudioMonitor = function(stream) {
 
 // fallback for old .localScreen behaviour
 Object.defineProperty(LocalMedia.prototype, 'localScreen', {
-	get: function() {
+	get() {
 		return this.localScreens.length > 0 ? this.localScreens[0] : null
 	},
 })

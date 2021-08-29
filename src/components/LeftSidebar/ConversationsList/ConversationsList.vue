@@ -25,7 +25,7 @@
 			v-for="item of conversationsList"
 			:key="item.id"
 			:item="item"
-			@click.native="handleConversationClick(item)" />
+			@click="handleConversationClick(item)" />
 		<template
 			v-if="!initialisedConversations">
 			<LoadingPlaceholder
@@ -40,7 +40,6 @@
 import Conversation from './Conversation'
 import Hint from '../../Hint'
 import LoadingPlaceholder from '../../LoadingPlaceholder'
-import { joinConversation, leaveConversation } from '../../../services/participantsService'
 import { EventBus } from '../../../services/EventBus'
 
 export default {
@@ -74,14 +73,14 @@ export default {
 	},
 
 	mounted() {
-		EventBus.$on('routeChange', this.onRouteChange)
-		EventBus.$once('joinedConversation', ({ token }) => {
+		EventBus.$on('route-change', this.onRouteChange)
+		EventBus.$once('joined-conversation', ({ token }) => {
 			this.scrollToConversation(token)
 		})
 	},
 
 	beforeDestroy() {
-		EventBus.$off('routeChange', this.onRouteChange)
+		EventBus.$off('route-change', this.onRouteChange)
 	},
 
 	methods: {
@@ -111,10 +110,10 @@ export default {
 				return
 			}
 			if (from.name === 'conversation') {
-				leaveConversation(from.params.token)
+				this.$store.dispatch('leaveConversation', { token: from.params.token })
 			}
 			if (to.name === 'conversation') {
-				joinConversation(to.params.token)
+				this.$store.dispatch('joinConversation', { token: to.params.token })
 			}
 		},
 

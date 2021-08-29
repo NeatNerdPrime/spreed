@@ -1,6 +1,186 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## 12.1.0 – 2021-08-10
+### Added
+- Allow to forward messages to another chat
+  [#6053](https://github.com/nextcloud/spreed/pull/6053)
+  [#6057](https://github.com/nextcloud/spreed/pull/6057)
+  [#6076](https://github.com/nextcloud/spreed/pull/6076)
+- Allow to clear chat history
+  [#6052](https://github.com/nextcloud/spreed/pull/6052)
+  [#5971](https://github.com/nextcloud/spreed/pull/5971)
+
+### Changed
+- Add "missed call" chat system message for one-to-one calls
+  [#6031](https://github.com/nextcloud/spreed/pull/6031)
+
+### Fixed
+- Remove div tags when pasting or writing multiline messages in Safari
+  [#6086](https://github.com/nextcloud/spreed/pull/6086)
+- Add list of "What's new in Talk 12"
+  [#6050](https://github.com/nextcloud/spreed/pull/6050)
+
+## 12.0.1 – 2021-07-15
+### Fixed
+- Unshare all items directly when deleting a room
+  [#5975](https://github.com/nextcloud/spreed/pull/5975)
+- Fix date picker for lobby not being visible
+  [#5984](https://github.com/nextcloud/spreed/pull/5984)
+- Fix initial camera quality with Chromium and Chromebased browsers
+  [#6000](https://github.com/nextcloud/spreed/pull/6000)
+- Wait for the wav encoder to be initialized before allowing recordings
+  [#6012](https://github.com/nextcloud/spreed/pull/6012)
+  [#6014](https://github.com/nextcloud/spreed/pull/6014)
+- Fix displaying moderation options in one-to-ones
+  [#6008](https://github.com/nextcloud/spreed/pull/6008)
+- Never show read marker on the very last message
+  [#5969](https://github.com/nextcloud/spreed/pull/5969)
+
+## 11.3.1 – 2021-07-15
+### Fixed
+- Add UI feedback when local participant is not connected
+  [#5797](https://github.com/nextcloud/spreed/pull/5797)
+- Allow to open files with ctrl click
+  [#5761](https://github.com/nextcloud/spreed/pull/5761)
+- Prevent submitting the message when the user is composing a character
+  [#5941](https://github.com/nextcloud/spreed/pull/5941)
+- Fix connection quality warning shown due to stalled stats
+  [#5924](https://github.com/nextcloud/spreed/pull/5924)
+- Fix connection quality stats not reset when setting a new peer connection
+  [#5768](https://github.com/nextcloud/spreed/pull/5768)
+- Ignore current participant when listing rooms if removed concurrently
+  [#5758](https://github.com/nextcloud/spreed/pull/5758)
+  [#5740](https://github.com/nextcloud/spreed/pull/5740)
+- Fix links to documentation
+  [#5947](https://github.com/nextcloud/spreed/pull/5947)
+
+## 10.1.6 – 2021-07-15
+### Fixed
+- Fix connection quality stats not reset when setting a new peer connection
+  [#5770](https://github.com/nextcloud/spreed/pull/5770)
+
+## 10.0.9 – 2021-07-15
+### Fixed
+- Fix connection quality stats not reset when setting a new peer connection
+  [#5769](https://github.com/nextcloud/spreed/pull/5769)
+
+## 12.0.0 – 2021-07-06
+### Added
+- Add support for simulcast streams when the high-performance backend is used
+  [#5535](https://github.com/nextcloud/spreed/pull/5535)
+- Allow users to have multiple session in the same conversation
+  [#5194](https://github.com/nextcloud/spreed/pull/5194)
+- Voice messages, location sharing and contacts sharing
+  [#5610](https://github.com/nextcloud/spreed/pull/5610)
+  [#5573](https://github.com/nextcloud/spreed/pull/5573)
+  [#5731](https://github.com/nextcloud/spreed/pull/5731)
+- Play a sound when a participant joins or leaves the call
+  [#5410](https://github.com/nextcloud/spreed/pull/5410)
+- Add unread message marker in the chat view
+  [#3825](https://github.com/nextcloud/spreed/pull/3825)
+- Show a "new message" indicator while being in the call
+  [#5534](https://github.com/nextcloud/spreed/pull/5534)
+- Sync group members with conversation participants
+  [#4810](https://github.com/nextcloud/spreed/pull/4810)
+- Add an option to reply privately
+  [#4855](https://github.com/nextcloud/spreed/pull/4855)
+- Conversation TopBar with icon, name and description
+  [#5596](https://github.com/nextcloud/spreed/pull/5596)
+
+### Changed
+- Use all defined STUN and TURN servers instead of a random one
+  [#5503](https://github.com/nextcloud/spreed/pull/5503)
+  [#5491](https://github.com/nextcloud/spreed/pull/5491)
+- Compatibility with Nextcloud 22
+
+### Fixed
+- Allow to mention groupfolder users in file chats
+  [#4246](https://github.com/nextcloud/spreed/pull/4246)
+- Fix not sending signaling messages to participants without a Peer object
+  [#4686](https://github.com/nextcloud/spreed/pull/4686)
+- Fix several issues with video, stream and screenshare selections
+
+### Removed
+- 🏁 Conversations API v1, v2 and v3
+- 🏁 Call API v1, v2 and v3
+- 🏁 Signaling API v1 and v2
+- 🏁 Support for Internet Explorer
+
+## 11.3.0 – 2021-06-04
+### Fixed
+- Inject the preloaded user status into the avatar component
+  [#5694](https://github.com/nextcloud/spreed/pull/5694)
+- Fix switching devices in Firefox
+  [#5580](https://github.com/nextcloud/spreed/pull/5580)
+- Fix switching devices during a call if started without audio nor video
+  [#5662](https://github.com/nextcloud/spreed/pull/5662)
+- Redirect to not-found page while in a call
+  [#5601](https://github.com/nextcloud/spreed/pull/5601)
+- Regenerate session id after entering conversation password
+  [#5638](https://github.com/nextcloud/spreed/pull/5638)
+- Fix a problem when a deleted user is recreated again
+  [#5643](https://github.com/nextcloud/spreed/pull/5643)
+- Encode dav path segments for direct GIF preview
+  [#5674](https://github.com/nextcloud/spreed/pull/5674)
+- Fix raised hand handler not detached when a participant leaves
+  [#5676](https://github.com/nextcloud/spreed/pull/5676)
+- Register flow operation via dedicated instead of legacy event
+  [#5650](https://github.com/nextcloud/spreed/pull/5650)
+
+## 11.2.2 – 2021-06-04
+### Fixed
+- Regenerate session id after entering conversation password
+  [#5639](https://github.com/nextcloud/spreed/pull/5639)
+- Fix a problem when a deleted user is recreated again
+  [#5644](https://github.com/nextcloud/spreed/pull/5644)
+- Encode dav path segments for direct GIF preview
+  [#5692](https://github.com/nextcloud/spreed/pull/5692)
+- Fix raised hand handler not detached when a participant leaves
+  [#5677](https://github.com/nextcloud/spreed/pull/5677)
+- Register flow operation via dedicated instead of legacy event
+  [#5651](https://github.com/nextcloud/spreed/pull/5651)
+
+## 10.1.5 – 2021-06-04
+### Fixed
+- Regenerate session id after entering conversation password
+  [#5640](https://github.com/nextcloud/spreed/pull/5640)
+- Fix quality warning appearing again in certain conditions
+  [#5553](https://github.com/nextcloud/spreed/pull/5553)
+- Fix camera quality starting bad in some cases
+  [#5557](https://github.com/nextcloud/spreed/pull/5557)
+
+## 10.0.8 – 2021-06-04
+### Fixed
+- Regenerate session id after entering conversation password
+  [#5641](https://github.com/nextcloud/spreed/pull/5641)
+- Fix quality warning appearing again in certain conditions
+  [#5555](https://github.com/nextcloud/spreed/pull/5555)
+- Fix camera quality starting bad in some cases
+  [#5559](https://github.com/nextcloud/spreed/pull/5559)
+
+## 9.0.10 – 2021-06-04
+### Fixed
+- Regenerate session id after entering conversation password
+  [#5642](https://github.com/nextcloud/spreed/pull/5642)
+
+## 11.2.1 – 2021-05-06
+### Fixed
+- Fix redirect when deleting the current conversation
+  [#5315](https://github.com/nextcloud/spreed/pull/5315)
+- Reset the page title when the conversation is not found
+  [#5493](https://github.com/nextcloud/spreed/pull/5493)
+- Fix quality warning appearing again in certain conditions
+  [#5552](https://github.com/nextcloud/spreed/pull/5552)
+- Fix camera quality starting bad in some cases
+  [#5556](https://github.com/nextcloud/spreed/pull/5556)
+- Allow to copy the link of open conversations which the user didn't join
+  [#5562](https://github.com/nextcloud/spreed/pull/5562)
+- Fix search focus when typing in the conversation search
+  [#5566](https://github.com/nextcloud/spreed/pull/5566)
+- Fix sorting of users which set their user status to offline
+  [#5569](https://github.com/nextcloud/spreed/pull/5569)
+
 ## 11.2.0 – 2021-04-12
 ### Added
 - Added a temporary OCS Api for clients to upload avatars

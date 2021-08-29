@@ -12,7 +12,7 @@
 * Data:
 
     field | type | Description
-    ------|------|------------
+    ---|---|---
     `includeStatus` | bool | Whether the user status information also needs to be loaded
 
 * Response:
@@ -25,19 +25,21 @@
     - Data:
         Array of participants, each participant has at least:
 
-        field | type | API | Description
-        ------|------|-----|------------
-        `attendeeId` | int | * | Unique attendee id
-        `actorType` | string | * | Currently known `users|guests|emails|groups`
-        `actorId` | string | * | The unique identifier for the given actor type
-        `displayName` | string | * | Can be empty for guests
-        `participantType` | int | * | Permissions level of the participant (see [constants list](constants.md#participant-types))
-        `lastPing` | int | * | Timestamp of the last ping of the user (should be used for sorting)
-        `inCall` | int | * | Call flags the user joined with (see [constants list](constants.md#participant-in-call-flag))
-        `sessionIds` | array | * | array of session ids, each are 512 character long strings, or empty if no session
-        `status` | string | * | Optional: Only available with `includeStatus=true`, for users with a set status and when there are less than 100 participants in the conversation
-        `statusIcon` | string | * | Optional: Only available with `includeStatus=true`, for users with a set status and when there are less than 100 participants in the conversation
-        `statusMessage` | string | * | Optional: Only available with `includeStatus=true`, for users with a set status and when there are less than 100 participants in the conversation
+        field | type | Added | Removed | Description
+        ---|---|---|---|---
+        `attendeeId` | int | v3 | | Unique attendee id
+        `actorType` | string | v3 | | Currently known `users|guests|emails|groups|circles`
+        `actorId` | string | v3 | | The unique identifier for the given actor type
+        `displayName` | string | v1 | | Can be empty for guests
+        `participantType` | int | v1 | | Permissions level of the participant (see [constants list](constants.md#participant-types))
+        `lastPing` | int | v1 | | Timestamp of the last ping of the user (should be used for sorting)
+        `inCall` | int | v1 | | Call flags the user joined with (see [constants list](constants.md#participant-in-call-flag))
+        `publishingPermissions` | int | v4 | | Publishing permissions for the participant (see [constants list](constants.md#attendee-publishing-permissions))
+        `sessionId` | string | v1 | v4 | `'0'` if not connected, otherwise a 512 character long string
+        `sessionIds` | array | v4 | | array of session ids, each are 512 character long strings, or empty if no session
+        `status` | string | v2 | | Optional: Only available with `includeStatus=true`, for users with a set status and when there are less than 100 participants in the conversation
+        `statusIcon` | string | v2 | | Optional: Only available with `includeStatus=true`, for users with a set status and when there are less than 100 participants in the conversation
+        `statusMessage` | string | v2 | | Optional: Only available with `includeStatus=true`, for users with a set status and when there are less than 100 participants in the conversation
 
 ## Add a participant to a conversation
 
@@ -46,7 +48,7 @@
 * Data:
 
     field | type | Description
-    ------|------|------------
+    ---|---|---
     `newParticipant` | string | User, group, email or circle to add
     `source` | string | Source of the participant(s) as returned by the autocomplete suggestion endpoint (default is `users`)
 
@@ -62,7 +64,7 @@
     - Data:
 
         field | type | Description
-        ------|------|------------
+        ---|---|---
         `type` | int | In case the conversation type changed, the new value is returned
 
 ## Delete an attendee by id from a conversation
@@ -72,7 +74,7 @@
 * Data:
 
     field | type | Description
-    ------|------|------------
+    ---|---|---
     `attendeeId` | int | The participant to delete
 
 * Response:
@@ -103,7 +105,7 @@
 * Data:
 
     field | type | Description
-    ------|------|------------
+    ---|---|---
     `password` | string | Optional: Password is only required for users which are self joined or guests and only when the conversation has `hasPassword` set to true.
     `force` | bool | If set to `false` and the user has an active session already a `409 Conflict` will be returned (Default: true - to keep the old behaviour)
 
@@ -119,7 +121,7 @@
     - Data in case of `409 Conflict`:
 
         field | type | Description
-        ------|------|------------
+        ---|---|---
         `sessionId` | string | 512 character long string
         `inCall` | int | Flags whether the conflicting session is in a potential call
         `lastPing` | int | Timestamp of the last ping of the conflicting session
@@ -132,7 +134,7 @@
 * Data:
 
     field | type | Description
-    ------|------|------------
+    ---|---|---
     `attendeeId` | int or null | Attendee id can be used for guests and users, not setting it will resend all invitations
 
 * Response:
@@ -158,7 +160,7 @@
 * Data:
 
     field | type | Description
-    ------|------|------------
+    ---|---|---
     `attendeeId` | int | Attendee id can be used for guests and users
 
 * Response:
@@ -177,7 +179,7 @@
 * Data:
 
     field | type | Description
-    ------|------|------------
+    ---|---|---
     `attendeeId` | int | Attendee id can be used for guests and users
 
 * Response:
@@ -188,6 +190,25 @@
         + `403 Forbidden` When the current participant tries to demote themselves
         + `404 Not Found` When the conversation could not be found for the participant
         + `404 Not Found` When the participant to demote could not be found
+
+## Set publishing permissions for an attendee
+
+* Method: `PUT`
+* Endpoint: `/room/{token}/attendees/publishing-permissions`
+* Data:
+
+    field | type | Description
+    ---|---|---
+    `attendeeId` | int | Attendee id can be used for guests and users
+    `state` | int | New state for the attendee, see [constants list](constants.md#attendee-publishing-permissions)
+
+* Response:
+    - Status code:
+        + `200 OK`
+        + `400 Bad Request` When the conversation type does not support setting publishing permissions (only group and public conversations)
+        + `403 Forbidden` When the current user is not a moderator, owner or guest moderator
+        + `404 Not Found` When the conversation could not be found for the participant
+        + `404 Not Found` When the attendee to set publishing permissions could not be found
 
 ## Get a participant by their pin
 
@@ -213,7 +234,7 @@ Note: This is only allowed with validate SIP bridge requests
 * Data:
 
     field | type | Description
-    ------|------|------------
+    ---|---|---
     `displayName` | string | The new display name
 
 * Response:

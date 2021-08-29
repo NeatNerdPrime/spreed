@@ -25,12 +25,16 @@
 		@mouseover="showShadow"
 		@mouseleave="hideShadow"
 		@click="handleClickVideo">
-		<video v-show="localMediaModel.attributes.videoEnabled"
-			id="localVideo"
-			ref="video"
-			disablePictureInPicture="true"
-			:class="videoClass"
-			class="video" />
+		<div v-show="localMediaModel.attributes.videoEnabled"
+			:class="videoWrapperClass"
+			class="videoWrapper">
+			<video
+				id="localVideo"
+				ref="video"
+				disablePictureInPicture="true"
+				:class="videoClass"
+				class="video" />
+		</div>
 		<div v-if="!localMediaModel.attributes.videoEnabled && !isSidebar" class="avatar-container">
 			<VideoBackground
 				v-if="isGrid || isStripe"
@@ -42,9 +46,10 @@
 				:disable-tooltip="true"
 				:show-user-status="false"
 				:user="userId"
-				:display-name="displayName" />
+				:display-name="displayName"
+				:class="avatarClass" />
 			<div v-if="!userId"
-				:class="avatarSizeClass"
+				:class="guestAvatarClass"
 				class="avatar guest">
 				{{ firstLetterOfGuestName }}
 			</div>
@@ -53,10 +58,11 @@
 			<LocalMediaControls
 				v-if="showControls"
 				class="local-media-controls"
+				:token="token"
 				:model="localMediaModel"
 				:local-call-participant-model="localCallParticipantModel"
 				:screen-sharing-button-hidden="isSidebar"
-				@switch-screen-to-id="$emit('switchScreenToId', $event)" />
+				@switch-screen-to-id="switchScreenToId($event)" />
 		</transition>
 		<div v-if="mouseover && isSelectable" class="hover-shadow" />
 		<div class="bottom-bar">
@@ -83,6 +89,7 @@ import {
 } from '@nextcloud/dialogs'
 import video from '../../../mixins/video.js'
 import VideoBackground from './VideoBackground'
+import { ConnectionState } from '../../../utils/webrtc/models/CallParticipantModel'
 
 export default {
 
@@ -97,6 +104,10 @@ export default {
 	mixins: [video],
 
 	props: {
+		token: {
+			type: String,
+			required: true,
+		},
 		localMediaModel: {
 			type: Object,
 			required: true,
@@ -134,9 +145,18 @@ export default {
 			return t('spreed', 'Back')
 		},
 
+		isNotConnected() {
+			// When there is no sender participant (when the MCU is not used, or
+			// if it is used but no peer object has been set yet) the local
+			// video is shown as connected.
+			return this.localCallParticipantModel.attributes.connectionState !== null
+				&& this.localCallParticipantModel.attributes.connectionState !== ConnectionState.CONNECTED && this.localCallParticipantModel.attributes.connectionState !== ConnectionState.COMPLETED
+		},
+
 		videoContainerClass() {
 			return {
-				'speaking': this.localMediaModel.attributes.speaking,
+				'not-connected': this.isNotConnected,
+				speaking: this.localMediaModel.attributes.speaking,
 				'video-container-grid': this.isGrid,
 				'video-container-stripe': this.isStripe,
 				'video-container-big': this.isBig,
@@ -167,12 +187,26 @@ export default {
 			)
 		},
 
+		videoWrapperClass() {
+			return {
+				'icon-loading': this.isNotConnected,
+			}
+		},
+
 		avatarSize() {
 			return this.useConstrainedLayout ? 64 : 128
 		},
 
-		avatarSizeClass() {
-			return 'avatar-' + this.avatarSize + 'px'
+		avatarClass() {
+			return {
+				'icon-loading': this.isNotConnected,
+			}
+		},
+
+		guestAvatarClass() {
+			return Object.assign(this.avatarClass, {
+				['avatar-' + this.avatarSize + 'px']: true,
+			})
 		},
 
 		localStreamVideoError() {
@@ -197,7 +231,7 @@ export default {
 		localCallParticipantModel: {
 			immediate: true,
 
-			handler: function(localCallParticipantModel, oldLocalCallParticipantModel) {
+			handler(localCallParticipantModel, oldLocalCallParticipantModel) {
 				if (oldLocalCallParticipantModel) {
 					oldLocalCallParticipantModel.off('forcedMute', this._handleForcedMute)
 				}
@@ -208,14 +242,14 @@ export default {
 			},
 		},
 
-		'localMediaModel.attributes.localStream': function(localStream) {
+		'localMediaModel.attributes.localStream'(localStream) {
 			this._setLocalStream(localStream)
 		},
 
 		localStreamVideoError: {
 			immediate: true,
 
-			handler: function(error) {
+			handler(error) {
 				if (error) {
 					if (error.name === 'NotAllowedError') {
 						this.notificationHandle = showError(t('spreed', 'Access to camera was denied'))
@@ -280,6 +314,10 @@ export default {
 			this.$store.dispatch('selectedVideoPeerId', null)
 			this.$store.dispatch('stopPresentation')
 		},
+
+		switchScreenToId(id) {
+			this.$emit('switch-screen-to-id', id)
+		},
 	},
 
 }
@@ -290,6 +328,13 @@ export default {
 @import '../../../assets/avatar.scss';
 @include avatar-mixin(64px);
 @include avatar-mixin(128px);
+
+.not-connected {
+	video,
+	.avatar-container {
+		opacity: 0.5;
+	}
+}
 
 .video-container-grid {
 	position:relative;
@@ -309,9 +354,16 @@ export default {
 	flex-direction: column;
 }
 
+.videoWrapper,
 .video {
 	height: 100%;
 	width: 100%;
+}
+
+.videoWrapper.icon-loading:after {
+	height: 60px;
+	width: 60px;
+	margin: -32px 0 0 -32px;
 }
 
 .video--fit {

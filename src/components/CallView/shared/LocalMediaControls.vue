@@ -76,19 +76,20 @@
 				:class="screenSharingButtonClass"
 				class="app-navigation-entry-utils-menu-button"
 				:boundaries-element="boundaryElement"
-				container="#content-vue"
+				:container="container"
+				:open="screenSharingMenuOpen"
 				@update:open="screenSharingMenuOpen = true"
 				@update:close="screenSharingMenuOpen = false">
 				<!-- Actions button icon -->
-				<Monitor
+				<CancelPresentation
 					v-if="model.attributes.localScreen"
 					slot="icon"
 					:size="24"
 					title=""
 					fill-color="#ffffff"
 					decorative />
-				<MonitorOff
-					v-if="!model.attributes.localScreen"
+				<PresentToAll
+					v-else
 					slot="icon"
 					:size="24"
 					title=""
@@ -96,29 +97,35 @@
 					decorative />
 				<!-- /Actions button icon -->
 				<!-- Actions -->
-				<ActionButton v-if="!screenSharingMenuOpen" @click.stop="toggleScreenSharingMenu" />
 				<ActionButton
-					v-if="!model.attributes.localScreen && splitScreenSharingMenu"
-					icon="icon-screen"
-					@click="shareScreen">
-					{{ t('spreed', 'Share whole screen') }}
-				</ActionButton>
-				<ActionButton
-					v-if="!model.attributes.localScreen && splitScreenSharingMenu"
-					icon="icon-share-window"
-					@click="shareWindow">
-					{{ t('spreed', 'Share a single window') }}
+					v-if="!screenSharingMenuOpen"
+					@click.stop="toggleScreenSharingMenu">
+					<PresentToAll
+						slot="icon"
+						:size="24"
+						title=""
+						fill-color="#ffffff"
+						decorative />
+					{{ screenSharingButtonTooltip }}
 				</ActionButton>
 				<ActionButton
 					v-if="model.attributes.localScreen"
-					icon="icon-screen"
 					@click="showScreen">
+					<Monitor
+						slot="icon"
+						:size="24"
+						title=""
+						decorative />
 					{{ t('spreed', 'Show your screen') }}
 				</ActionButton>
 				<ActionButton
 					v-if="model.attributes.localScreen"
-					icon="icon-screen-off"
 					@click="stopScreen">
+					<CancelPresentation
+						slot="icon"
+						:size="24"
+						title=""
+						decorative />
 					{{ t('spreed', 'Stop screensharing') }}
 				</ActionButton>
 			</Actions>
@@ -140,7 +147,7 @@
 			<Actions
 				v-if="showActions"
 				v-tooltip="t('spreed', 'More actions')"
-				container="#content-vue"
+				:container="container"
 				:aria-label="t('spreed', 'More actions')">
 				<ActionButton
 					:close-after-click="true"
@@ -189,7 +196,7 @@
 						<button
 							v-if="!isQualityWarningTooltipDismissed"
 							class="hint__button"
-							@click="isQualityWarningTooltipDismissed = true">
+							@click="dismissQualityWarningTooltip">
 							{{ t('spreed', 'Dismiss') }}
 						</button>
 					</div>
@@ -203,15 +210,17 @@
 import escapeHtml from 'escape-html'
 import { emit } from '@nextcloud/event-bus'
 import { showMessage } from '@nextcloud/dialogs'
+import CancelPresentation from '../../missingMaterialDesignIcons/CancelPresentation'
 import Hand from 'vue-material-design-icons/Hand'
 import Microphone from 'vue-material-design-icons/Microphone'
 import MicrophoneOff from 'vue-material-design-icons/MicrophoneOff'
 import Monitor from 'vue-material-design-icons/Monitor'
-import MonitorOff from 'vue-material-design-icons/MonitorOff'
+import PresentToAll from '../../missingMaterialDesignIcons/PresentToAll'
 import Video from 'vue-material-design-icons/Video'
 import VideoOff from 'vue-material-design-icons/VideoOff'
 import Popover from '@nextcloud/vue/dist/Components/Popover'
 import Tooltip from '@nextcloud/vue/dist/Directives/Tooltip'
+import { PARTICIPANT } from '../../../constants'
 import SpeakingWhileMutedWarner from '../../../utils/webrtc/SpeakingWhileMutedWarner'
 import NetworkStrength2Alert from 'vue-material-design-icons/NetworkStrength2Alert'
 import { Actions, ActionSeparator, ActionButton } from '@nextcloud/vue'
@@ -232,16 +241,21 @@ export default {
 		Actions,
 		ActionSeparator,
 		ActionButton,
+		CancelPresentation,
 		Hand,
 		Microphone,
 		MicrophoneOff,
-		'VideoIcon': Video,
+		PresentToAll,
+		VideoIcon: Video,
 		VideoOff,
 		Monitor,
-		MonitorOff,
 	},
 
 	props: {
+		token: {
+			type: String,
+			required: true,
+		},
 		model: {
 			type: Object,
 			required: true,
@@ -265,11 +279,9 @@ export default {
 			mounted: false,
 			speakingWhileMutedNotification: null,
 			screenSharingMenuOpen: false,
-			splitScreenSharingMenu: false,
 			boundaryElement: document.querySelector('.main-view'),
-			isQualityWarningTooltipDismissed: false,
 			mouseover: false,
-			callAnalyzer: callAnalyzer,
+			callAnalyzer,
 			qualityWarningInGracePeriodTimeout: null,
 			audioEnabledBeforeSpacebarKeydown: undefined,
 			spacebarKeyDown: false,
@@ -284,10 +296,26 @@ export default {
 			return t('spreed', 'Lower hand (R)')
 		},
 
+		conversation() {
+			return this.$store.getters.conversation(this.token) || this.$store.getters.dummyConversation
+		},
+
+		isAudioAllowed() {
+			return this.conversation.publishingPermissions === PARTICIPANT.PUBLISHING_PERMISSIONS.ALL
+		},
+
+		isVideoAllowed() {
+			return this.conversation.publishingPermissions === PARTICIPANT.PUBLISHING_PERMISSIONS.ALL
+		},
+
+		isScreensharingAllowed() {
+			return this.conversation.publishingPermissions === PARTICIPANT.PUBLISHING_PERMISSIONS.ALL
+		},
+
 		audioButtonClass() {
 			return {
-				'audio-disabled': this.model.attributes.audioAvailable && !this.model.attributes.audioEnabled,
-				'no-audio-available': !this.model.attributes.audioAvailable,
+				'audio-disabled': this.isAudioAllowed && this.model.attributes.audioAvailable && !this.model.attributes.audioEnabled,
+				'no-audio-available': !this.isAudioAllowed || !this.model.attributes.audioAvailable,
 			}
 		},
 
@@ -296,6 +324,10 @@ export default {
 		},
 
 		audioButtonTooltip() {
+			if (!this.isAudioAllowed) {
+				return t('spreed', 'You are not allowed to enable audio')
+			}
+
 			if (!this.model.attributes.audioAvailable) {
 				return {
 					content: t('spreed', 'No audio'),
@@ -343,8 +375,8 @@ export default {
 
 		videoButtonClass() {
 			return {
-				'video-disabled': this.model.attributes.videoAvailable && !this.model.attributes.videoEnabled,
-				'no-video-available': !this.model.attributes.videoAvailable,
+				'video-disabled': this.isVideoAllowed && this.model.attributes.videoAvailable && !this.model.attributes.videoEnabled,
+				'no-video-available': !this.isVideoAllowed || !this.model.attributes.videoAvailable,
 			}
 		},
 
@@ -353,6 +385,10 @@ export default {
 		},
 
 		videoButtonTooltip() {
+			if (!this.isVideoAllowed) {
+				return t('spreed', 'You are not allowed to enable video')
+			}
+
 			if (!this.model.attributes.videoAvailable) {
 				return t('spreed', 'No camera')
 			}
@@ -386,16 +422,25 @@ export default {
 
 		screenSharingButtonClass() {
 			return {
-				'screensharing-disabled': !this.model.attributes.localScreen,
+				'screensharing-disabled': this.isScreensharingAllowed && !this.model.attributes.localScreen,
+				'no-screensharing-available': !this.isScreensharingAllowed,
 			}
 		},
 
 		screenSharingButtonTooltip() {
+			if (!this.isScreensharingAllowed) {
+				return t('spreed', 'You are not allowed to enable screensharing')
+			}
+
 			if (this.screenSharingMenuOpen) {
 				return null
 			}
 
-			return (this.model.attributes.localScreen || this.splitScreenSharingMenu) ? t('spreed', 'Screensharing options') : t('spreed', 'Enable screensharing')
+			if (!this.isScreensharingAllowed) {
+				return t('spreed', 'No screensharing')
+			}
+
+			return this.model.attributes.localScreen ? t('spreed', 'Screensharing options') : t('spreed', 'Enable screensharing')
 		},
 
 		screenSharingButtonAriaLabel() {
@@ -403,7 +448,15 @@ export default {
 				return ''
 			}
 
-			return (this.model.attributes.localScreen || this.splitScreenSharingMenu) ? t('spreed', 'Screensharing options') : t('spreed', 'Enable screensharing')
+			return this.model.attributes.localScreen ? t('spreed', 'Screensharing options') : t('spreed', 'Enable screensharing')
+		},
+
+		container() {
+			return this.$store.getters.getMainContainerSelector()
+		},
+
+		isQualityWarningTooltipDismissed() {
+			return this.$store.getters.isQualityWarningTooltipDismissed
 		},
 
 		showQualityWarningTooltip() {
@@ -501,14 +554,14 @@ export default {
 	},
 
 	watch: {
-		currentVolumeProportion: function() {
+		currentVolumeProportion() {
 			// The volume meter is updated directly in the DOM as it is
 			// more efficient than relying on Vue.js to animate the style property,
 			// because the latter would also process all neighboring components repeatedly.
 			this.updateVolumeMeter()
 		},
 
-		senderConnectionQualityIsBad: function(senderConnectionQualityIsBad) {
+		senderConnectionQualityIsBad(senderConnectionQualityIsBad) {
 			if (!senderConnectionQualityIsBad) {
 				return
 			}
@@ -521,16 +574,6 @@ export default {
 				this.qualityWarningInGracePeriodTimeout = null
 			}, 10000)
 		},
-	},
-
-	created() {
-		// The standard "getDisplayMedia" does not support pre-filtering the
-		// type of display sources, so the unified menu is used in that case
-		// too.
-		if (window.navigator.userAgent.match('Firefox') && !window.navigator.mediaDevices.getDisplayMedia) {
-			const firefoxVersion = parseInt(window.navigator.userAgent.match(/Firefox\/(.*)/)[1], 10)
-			this.splitScreenSharingMenu = (firefoxVersion >= 52)
-		}
 	},
 
 	mounted() {
@@ -615,6 +658,10 @@ export default {
 		},
 
 		toggleScreenSharingMenu() {
+			if (!this.isScreensharingAllowed) {
+				return
+			}
+
 			if (!this.model.getWebRtc().capabilities.supportScreenSharing) {
 				if (window.location.protocol === 'https:') {
 					showMessage(t('spreed', 'Screen sharing is not supported by your browser.'))
@@ -624,11 +671,9 @@ export default {
 				return
 			}
 
-			if (this.model.attributes.localScreen || this.splitScreenSharingMenu) {
+			if (this.model.attributes.localScreen) {
 				this.screenSharingMenuOpen = !this.screenSharingMenuOpen
-			}
-
-			if (!this.model.attributes.localScreen && !this.splitScreenSharingMenu) {
+			} else {
 				this.startShareScreen()
 			}
 		},
@@ -645,25 +690,9 @@ export default {
 			)
 		},
 
-		shareScreen() {
-			if (!this.model.attributes.localScreen) {
-				this.startShareScreen('screen')
-			}
-
-			this.screenSharingMenuOpen = false
-		},
-
-		shareWindow() {
-			if (!this.model.attributes.localScreen) {
-				this.startShareScreen('window')
-			}
-
-			this.screenSharingMenuOpen = false
-		},
-
 		showScreen() {
 			if (this.model.attributes.localScreen) {
-				this.$emit('switchScreenToId', this.localCallParticipantModel.attributes.peerId)
+				this.$emit('switch-screen-to-id', this.localCallParticipantModel.attributes.peerId)
 			}
 
 			this.screenSharingMenuOpen = false
@@ -721,11 +750,15 @@ export default {
 			}
 			if (this.qualityWarningTooltip.action === 'disableScreenShare') {
 				this.model.stopSharingScreen()
-				this.isQualityWarningTooltipDismissed = true
+				this.dismissQualityWarningTooltip()
 			} else if (this.qualityWarningTooltip.action === 'disableVideo') {
 				this.model.disableVideo()
-				this.isQualityWarningTooltipDismissed = true
+				this.dismissQualityWarningTooltip()
 			}
+		},
+
+		dismissQualityWarningTooltip() {
+			this.$store.dispatch('dismissQualityWarningTooltip')
 		},
 	},
 }
@@ -761,7 +794,7 @@ export default {
 
 .buttons-bar button.audio-disabled:not(.no-audio-available),
 .buttons-bar button.video-disabled:not(.no-video-available),
-.buttons-bar button.screensharing-disabled,
+.buttons-bar button.screensharing-disabled:not(.no-screensharing-available),
 .buttons-bar button.lower-hand {
 	&:hover,
 	&:focus {
@@ -770,7 +803,8 @@ export default {
 }
 
 .buttons-bar button.no-audio-available,
-.buttons-bar button.no-video-available {
+.buttons-bar button.no-video-available,
+.buttons-bar button.no-screensharing-available {
 	&, & * {
 		opacity: .7;
 		cursor: not-allowed;
@@ -778,7 +812,8 @@ export default {
 }
 
 .buttons-bar button.no-audio-available:active,
-.buttons-bar button.no-video-available:active {
+.buttons-bar button.no-video-available:active,
+.buttons-bar button.no-screensharing-available:active {
 	background-color: transparent;
 }
 

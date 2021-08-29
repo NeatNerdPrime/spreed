@@ -24,6 +24,14 @@
 				<referencedClass name="Doctrine\DBAL\Platforms\PostgreSQL94Platform" />
 				<referencedClass name="Doctrine\DBAL\Types\Types" />
 				<referencedClass name="OC" />
+				<referencedClass name="OCA\Circles\Api\v1\Circles" />
+				<referencedClass name="OCA\Circles\Events\AddingCircleMemberEvent" />
+				<referencedClass name="OCA\Circles\Events\CircleDestroyedEvent" />
+				<referencedClass name="OCA\Circles\Events\RemovingCircleMemberEvent" />
+				<referencedClass name="OCA\Circles\Model\Circle" />
+				<referencedClass name="OCA\Circles\Model\Member" />
+				<referencedClass name="OCA\DAV\CardDAV\PhotoCache" />
+				<referencedClass name="OCA\FederatedFileSharing\AddressHandler" />
 				<referencedClass name="OCA\Files_Sharing\SharedStorage" />
 			</errorLevel>
 		</UndefinedClass>
@@ -37,6 +45,9 @@
 				<referencedClass name="Doctrine\DBAL\Schema\SchemaException" />
 				<referencedClass name="Doctrine\DBAL\Schema\Table" />
 				<referencedClass name="OC\DB\ConnectionAdapter" />
+				<referencedClass name="OCA\Circles\Model\Member" />
+				<referencedClass name="OCA\DAV\CardDAV\PhotoCache" />
+				<referencedClass name="OCA\FederatedFileSharing\AddressHandler" />
 			</errorLevel>
 		</UndefinedDocblockClass>
 		<UndefinedInterfaceMethod>

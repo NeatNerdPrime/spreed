@@ -62,7 +62,7 @@ return [
 			'url' => '/api/{apiVersion}/signaling/settings',
 			'verb' => 'GET',
 			'requirements' => [
-				'apiVersion' => 'v(1|2)',
+				'apiVersion' => 'v(3)',
 			],
 		],
 		[
@@ -70,7 +70,7 @@ return [
 			'url' => '/api/{apiVersion}/signaling/welcome/{serverId}',
 			'verb' => 'GET',
 			'requirements' => [
-				'apiVersion' => 'v(1|2)',
+				'apiVersion' => 'v(3)',
 				'serverId' => '^\d+$',
 			],
 		],
@@ -79,7 +79,7 @@ return [
 			'url' => '/api/{apiVersion}/signaling/backend',
 			'verb' => 'POST',
 			'requirements' => [
-				'apiVersion' => 'v(1|2)',
+				'apiVersion' => 'v(3)',
 			],
 		],
 		[
@@ -87,7 +87,7 @@ return [
 			'url' => '/api/{apiVersion}/signaling/{token}',
 			'verb' => 'POST',
 			'requirements' => [
-				'apiVersion' => 'v(1|2)',
+				'apiVersion' => 'v(3)',
 				'token' => '^[a-z0-9]{4,30}$',
 			],
 		],
@@ -96,7 +96,7 @@ return [
 			'url' => '/api/{apiVersion}/signaling/{token}',
 			'verb' => 'GET',
 			'requirements' => [
-				'apiVersion' => 'v(1|2)',
+				'apiVersion' => 'v(3)',
 				'token' => '^[a-z0-9]{4,30}$',
 			],
 		],
@@ -117,6 +117,15 @@ return [
 			'name' => 'Call#joinCall',
 			'url' => '/api/{apiVersion}/call/{token}',
 			'verb' => 'POST',
+			'requirements' => [
+				'apiVersion' => 'v(4)',
+				'token' => '^[a-z0-9]{4,30}$',
+			],
+		],
+		[
+			'name' => 'Call#updateCallFlags',
+			'url' => '/api/{apiVersion}/call/{token}',
+			'verb' => 'PUT',
 			'requirements' => [
 				'apiVersion' => 'v(4)',
 				'token' => '^[a-z0-9]{4,30}$',
@@ -148,6 +157,15 @@ return [
 			'name' => 'Chat#sendMessage',
 			'url' => '/api/{apiVersion}/chat/{token}',
 			'verb' => 'POST',
+			'requirements' => [
+				'apiVersion' => 'v1',
+				'token' => '^[a-z0-9]{4,30}$',
+			],
+		],
+		[
+			'name' => 'Chat#clearHistory',
+			'url' => '/api/{apiVersion}/chat/{token}',
+			'verb' => 'DELETE',
 			'requirements' => [
 				'apiVersion' => 'v1',
 				'token' => '^[a-z0-9]{4,30}$',
@@ -336,6 +354,15 @@ return [
 			],
 		],
 		[
+			'name' => 'Room#setAttendeePublishingPermissions',
+			'url' => '/api/{apiVersion}/room/{token}/attendees/publishing-permissions',
+			'verb' => 'PUT',
+			'requirements' => [
+				'apiVersion' => 'v(4)',
+				'token' => '^[a-z0-9]{4,30}$',
+			],
+		],
+		[
 			'name' => 'Room#joinRoom',
 			'url' => '/api/{apiVersion}/room/{token}/participants/active',
 			'verb' => 'POST',
@@ -493,6 +520,27 @@ return [
 			'requirements' => [
 				'apiVersion' => 'v1',
 				'token' => '^[a-z0-9]{4,30}$',
+			],
+		],
+
+		/**
+		 * Federation
+		 */
+
+		[
+			'name' => 'Federation#acceptShare',
+			'url' => 'api/{apiVersion}/federation/invitation/{id}',
+			'verb' => 'POST',
+			'requirements' => [
+				'apiVersion' => 'v1',
+			],
+		],
+		[
+			'name' => 'Federation#rejectShare',
+			'url' => 'api/{apiVersion}/federation/invitation/{id}',
+			'verb' => 'DELETE',
+			'requirements' => [
+				'apiVersion' => 'v1',
 			],
 		],
 

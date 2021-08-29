@@ -40,10 +40,8 @@ import { getCurrentUser } from '@nextcloud/auth'
 import { loadState } from '@nextcloud/initial-state'
 import CallView from './components/CallView/CallView'
 import ChatView from './components/ChatView'
-import { PARTICIPANT } from './constants'
 import { EventBus } from './services/EventBus'
 import {
-	joinConversation,
 	leaveConversationSync,
 } from './services/participantsService'
 import { signalingKill } from './utils/webrtc/index'
@@ -120,7 +118,7 @@ export default {
 				this.$store.dispatch('setCurrentUser', getCurrentUser())
 			}
 
-			await joinConversation(this.token)
+			await this.$store.dispatch('joinConversation', { token: this.token })
 
 			// Fetching the conversation needs to be done once the user has
 			// joined the conversation (otherwise only limited data would be
@@ -139,10 +137,10 @@ export default {
 			// "inCall" flag (which is locally updated when joining and leaving
 			// a call) is currently used.
 			if (loadState('spreed', 'signaling_mode') !== 'internal') {
-				EventBus.$on('shouldRefreshConversations', this.fetchCurrentConversation)
-				EventBus.$on('Signaling::participantListChanged', this.fetchCurrentConversation)
+				EventBus.$on('should-refresh-conversations', this.fetchCurrentConversation)
+				EventBus.$on('signaling-participant-list-changed', this.fetchCurrentConversation)
 			} else {
-				// The "shouldRefreshConversations" event is triggered only when
+				// The "should-refresh-conversations" event is triggered only when
 				// the external signaling server is used; when the internal
 				// signaling server is used periodic polling has to be used
 				// instead.
@@ -154,7 +152,6 @@ export default {
 			await this.$store.dispatch('joinCall', {
 				token: this.token,
 				participantIdentifier: this.$store.getters.getParticipantIdentifier(),
-				flags: PARTICIPANT.CALL_FLAG.IN_CALL,
 			})
 		},
 

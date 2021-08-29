@@ -3,7 +3,7 @@
  *
  * @author Joas Schilling <coding@schilljs.com>
  *
- * @license GNU AGPL version 3 or any later version
+ * @license AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -22,8 +22,10 @@
 
 import fromStateOr from './helper'
 import BrowserStorage from '../services/BrowserStorage'
+import { setPlaySounds } from '../services/settingsService'
 
 const state = {
+	userId: undefined,
 	playSoundsUser: fromStateOr('spreed', 'play_sounds', false),
 	playSoundsGuest: BrowserStorage.getItem('play_sounds') !== 'no',
 }
@@ -48,17 +50,32 @@ const mutations = {
 		state.playSoundsUser = enabled
 		state.playSoundsGuest = enabled
 	},
+
+	setUserId(state, userId) {
+		state.userId = userId
+	},
 }
 
 const actions = {
+
+	/**
+	 * @param {object} context default store context;
+	 * @param {object} user A NextcloudUser object as returned by @nextcloud/auth
+	 * @param {string} user.uid The user id of the user
+	 */
+	setCurrentUser(context, user) {
+		context.commit('setUserId', user.uid)
+	},
+
 	/**
 	 * Set the actor from the current user
 	 *
 	 * @param {object} context default store context;
 	 * @param {boolean} enabled Whether sounds should be played
 	 */
-	setPlaySounds({ commit }, enabled) {
-		commit('setPlaySounds', enabled)
+	async setPlaySounds(context, enabled) {
+		await setPlaySounds(!context.state.userId, enabled)
+		context.commit('setPlaySounds', enabled)
 	},
 }
 

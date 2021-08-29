@@ -21,6 +21,7 @@
 
 namespace OCA\Talk\Tests\php\Chat\Parser;
 
+use OCA\DAV\CardDAV\PhotoCache;
 use OCA\Talk\Chat\Parser\SystemMessage;
 use OCA\Talk\Exceptions\ParticipantNotFoundException;
 use OCA\Talk\GuestManager;
@@ -36,6 +37,8 @@ use OCP\Files\InvalidPathException;
 use OCP\Files\IRootFolder;
 use OCP\Files\Node;
 use OCP\Files\NotFoundException;
+use OCP\IGroup;
+use OCP\IGroupManager;
 use OCP\IL10N;
 use OCP\IPreview as IPreviewManager;
 use OCP\IURLGenerator;
@@ -53,12 +56,16 @@ class SystemMessageTest extends TestCase {
 
 	/** @var IUserManager|MockObject */
 	protected $userManager;
+	/** @var IGroupManager|MockObject */
+	protected $groupManager;
 	/** @var GuestManager|MockObject */
 	protected $guestManager;
 	/** @var IPreviewManager|MockObject */
 	protected $previewManager;
 	/** @var RoomShareProvider|MockObject */
 	protected $shareProvider;
+	/** @var PhotoCache|MockObject */
+	protected $photoCache;
 	/** @var IRootFolder|MockObject */
 	protected $rootFolder;
 	/** @var IURLGenerator|MockObject */
@@ -70,9 +77,11 @@ class SystemMessageTest extends TestCase {
 		parent::setUp();
 
 		$this->userManager = $this->createMock(IUserManager::class);
+		$this->groupManager = $this->createMock(IGroupManager::class);
 		$this->guestManager = $this->createMock(GuestManager::class);
 		$this->previewManager = $this->createMock(IPreviewManager::class);
 		$this->shareProvider = $this->createMock(RoomShareProvider::class);
+		$this->photoCache = $this->createMock(PhotoCache::class);
 		$this->rootFolder = $this->createMock(IRootFolder::class);
 		$this->url = $this->createMock(IURLGenerator::class);
 		$this->l = $this->createMock(IL10N::class);
@@ -98,9 +107,11 @@ class SystemMessageTest extends TestCase {
 			$mock = $this->getMockBuilder(SystemMessage::class)
 				->setConstructorArgs([
 					$this->userManager,
+					$this->groupManager,
 					$this->guestManager,
 					$this->previewManager,
 					$this->shareProvider,
+					$this->photoCache,
 					$this->rootFolder,
 					$this->url,
 				])
@@ -111,9 +122,11 @@ class SystemMessageTest extends TestCase {
 		}
 		return new SystemMessage(
 			$this->userManager,
+			$this->groupManager,
 			$this->guestManager,
 			$this->previewManager,
 			$this->shareProvider,
+			$this->photoCache,
 			$this->rootFolder,
 			$this->url
 		);
@@ -138,11 +151,11 @@ class SystemMessageTest extends TestCase {
 				['actor' => ['id' => 'actor', 'type' => 'user']],
 			],
 			['description_set', ['newDescription' => 'New description'], 'recipient',
-				'{actor} set the description to "New description"',
+				'{actor} set the description',
 				['actor' => ['id' => 'actor', 'type' => 'user']],
 			],
 			['description_set', ['newDescription' => 'New description'], 'actor',
-				'You set the description to "New description"',
+				'You set the description',
 				['actor' => ['id' => 'actor', 'type' => 'user']],
 			],
 			['description_removed', [], 'recipient',
@@ -242,6 +255,22 @@ class SystemMessageTest extends TestCase {
 			['user_removed', ['user' => 'user'], 'actor',
 				'You removed {user}',
 				['actor' => ['id' => 'actor', 'type' => 'user'], 'user' => ['id' => 'user', 'type' => 'user']],
+			],
+			['group_added', ['group' => 'g1'], 'recipient',
+				'{actor} added group {group}',
+				['actor' => ['id' => 'actor', 'type' => 'user'], 'group' => ['id' => 'g1', 'type' => 'group']],
+			],
+			['group_added', ['group' => 'g1'], 'actor',
+				'You added group {group}',
+				['actor' => ['id' => 'actor', 'type' => 'user'], 'group' => ['id' => 'g1', 'type' => 'group']],
+			],
+			['group_removed', ['group' => 'g1'], 'recipient',
+				'{actor} removed group {group}',
+				['actor' => ['id' => 'actor', 'type' => 'user'], 'group' => ['id' => 'g1', 'type' => 'group']],
+			],
+			['group_removed', ['group' => 'g1'], 'actor',
+				'You removed group {group}',
+				['actor' => ['id' => 'actor', 'type' => 'user'], 'group' => ['id' => 'g1', 'type' => 'group']],
 			],
 			['moderator_promoted', ['user' => 'user'], 'recipient',
 				'{actor} promoted {user} to moderator',
@@ -414,7 +443,7 @@ class SystemMessageTest extends TestCase {
 		/** @var Room|MockObject $room */
 		$room = $this->createMock(Room::class);
 
-		$parser = $this->getParser(['getActorFromComment', 'getUser', 'getGuest', 'parseCall', 'getFileFromShare']);
+		$parser = $this->getParser(['getActorFromComment', 'getUser', 'getGroup', 'getGuest', 'parseCall', 'getFileFromShare']);
 		$parser->expects($this->once())
 			->method('getActorFromComment')
 			->with($room, $comment)
@@ -423,6 +452,10 @@ class SystemMessageTest extends TestCase {
 			->method('getUser')
 			->with($parameters['user'] ?? 'user')
 			->willReturn(['id' => $parameters['user'] ?? 'user', 'type' => 'user']);
+		$parser->expects($this->any())
+			->method('getGroup')
+			->with($parameters['group'] ?? 'group')
+			->willReturn(['id' => $parameters['group'] ?? 'group', 'type' => 'group']);
 		$parser->expects($this->any())
 			->method('getGuest')
 			->with($room, $parameters['session'] ?? 'guest')
@@ -513,7 +546,7 @@ class SystemMessageTest extends TestCase {
 		$node->expects($this->once())
 			->method('getName')
 			->willReturn('name');
-		$node->expects($this->once())
+		$node->expects($this->atLeastOnce())
 			->method('getMimeType')
 			->willReturn('text/plain');
 		$node->expects($this->once())
@@ -574,7 +607,7 @@ class SystemMessageTest extends TestCase {
 		$node->expects($this->once())
 			->method('getPath')
 			->willReturn('/owner/files/path/to/file/name');
-		$node->expects($this->once())
+		$node->expects($this->atLeastOnce())
 			->method('getMimeType')
 			->willReturn('httpd/unix-directory');
 		$node->expects($this->once())
@@ -639,7 +672,7 @@ class SystemMessageTest extends TestCase {
 		$node->expects($this->once())
 			->method('getName')
 			->willReturn('name');
-		$node->expects($this->once())
+		$node->expects($this->atLeastOnce())
 			->method('getMimeType')
 			->willReturn('application/octet-stream');
 		$node->expects($this->once())
@@ -896,6 +929,77 @@ class SystemMessageTest extends TestCase {
 		}
 
 		$this->assertSame($name, self::invokePrivate($parser, 'getDisplayName', [$uid]));
+	}
+
+	public function dataGetGroup(): array {
+		return [
+			['test', [], false, 'Test'],
+			['foo', ['admin' => 'Admin'], false, 'Bar'],
+			['admin', ['admin' => 'Administrator'], true, 'Administrator'],
+		];
+	}
+
+	/**
+	 * @dataProvider dataGetGroup
+	 * @param string $gid
+	 * @param array $cache
+	 * @param bool $cacheHit
+	 * @param string $name
+	 */
+	public function testGetGroup(string $gid, array $cache, bool $cacheHit, string $name): void {
+		$parser = $this->getParser(['getDisplayNameGroup']);
+
+		self::invokePrivate($parser, 'groupNames', [$cache]);
+
+		if (!$cacheHit) {
+			$parser->expects(self::once())
+				->method('getDisplayNameGroup')
+				->with($gid)
+				->willReturn($name);
+		} else {
+			$parser->expects(self::never())
+				->method('getDisplayNameGroup');
+		}
+
+		$result = self::invokePrivate($parser, 'getGroup', [$gid]);
+		self::assertSame('group', $result['type']);
+		self::assertSame($gid, $result['id']);
+		self::assertSame($name, $result['name']);
+	}
+
+	public function dataGetDisplayNameGroup(): array {
+		return [
+			['test', true, 'Test'],
+			['foo', false, 'foo'],
+		];
+	}
+
+	/**
+	 * @dataProvider dataGetDisplayNameGroup
+	 * @param string $gid
+	 * @param bool $validGroup
+	 * @param string $name
+	 */
+	public function testGetDisplayNameGroup(string $gid, bool $validGroup, string $name): void {
+		$parser = $this->getParser();
+
+		if ($validGroup) {
+			$group = $this->createMock(IGroup::class);
+			$group->expects(self::once())
+				->method('getDisplayName')
+				->willReturn($name);
+			$this->groupManager->expects(self::once())
+				->method('get')
+				->with($gid)
+				->willReturn($group);
+		} else {
+			$this->groupManager->expects(self::once())
+				->method('get')
+				->with($gid)
+				->willReturn(null);
+		}
+
+		self::assertSame($name, self::invokePrivate($parser, 'getDisplayNameGroup', [$gid]));
 	}
 
 	public function testGetGuest() {

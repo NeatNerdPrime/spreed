@@ -82,7 +82,6 @@ OC.L10N.register(
     "Close" : "დახურვა",
     "Conversation name" : "საუბრის სახელწოდება",
     "Reply" : "პასუხი",
-    "Remove" : "წაშლა",
     "Today" : "დღეს",
     "Yesterday" : "გუშინ",
     "{relativeDate}, {absoluteDate}" : "{relativeDate}, {absoluteDate}",
@@ -114,7 +113,8 @@ OC.L10N.register(
     "UDP and TCP" : "UDP და TCP",
     "UDP only" : "მხოლოდ UDP",
     "TCP only" : "მხოლოდ TCP",
-    "Share link" : "ბმულის გაზიარება",
-    "Enabled" : "მოქმედია"
+    "Remove" : "წაშლა",
+    "Enabled" : "მოქმედია",
+    "Share link" : "ბმულის გაზიარება"
 },
 "nplurals=2; plural=(n!=1);");

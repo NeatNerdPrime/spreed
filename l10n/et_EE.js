@@ -47,7 +47,6 @@ OC.L10N.register(
     "Password protect" : "Parooliga kaitsmine",
     "Close" : "Sulge",
     "Reply" : "Vasta",
-    "Remove" : "Eemalda",
     "Today" : "Täna",
     "Yesterday" : "Eile",
     "guest" : "külaline",
@@ -65,7 +64,8 @@ OC.L10N.register(
     "UDP and TCP" : "UDP ja TCP",
     "UDP only" : "Ainult UDP",
     "TCP only" : "Ainult TCP",
-    "Share link" : "Jaga link",
-    "Enabled" : "Lubatud"
+    "Remove" : "Eemalda",
+    "Enabled" : "Lubatud",
+    "Share link" : "Jaga link"
 },
 "nplurals=2; plural=(n != 1);");

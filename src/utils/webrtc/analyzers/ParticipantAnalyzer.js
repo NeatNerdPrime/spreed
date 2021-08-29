@@ -2,7 +2,7 @@
  *
  * @copyright Copyright (c) 2020, Daniel Calviño Sánchez (danxuliu@gmail.com)
  *
- * @license GNU AGPL version 3 or any later version
+ * @license AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -83,15 +83,15 @@ function ParticipantAnalyzer() {
 }
 ParticipantAnalyzer.prototype = {
 
-	on: function(event, handler) {
-		if (!this._handlers.hasOwnProperty(event)) {
+	on(event, handler) {
+		if (!Object.prototype.hasOwnProperty.call(this._handlers, event)) {
 			this._handlers[event] = [handler]
 		} else {
 			this._handlers[event].push(handler)
 		}
 	},
 
-	off: function(event, handler) {
+	off(event, handler) {
 		const handlers = this._handlers[event]
 		if (!handlers) {
 			return
@@ -103,7 +103,7 @@ ParticipantAnalyzer.prototype = {
 		}
 	},
 
-	_trigger: function(event, args) {
+	_trigger(event, args) {
 		let handlers = this._handlers[event]
 		if (!handlers) {
 			return
@@ -118,7 +118,7 @@ ParticipantAnalyzer.prototype = {
 		}
 	},
 
-	destroy: function() {
+	destroy() {
 		if (this._localCallParticipantModel) {
 			this._localCallParticipantModel.off('change:peer', this._handlePeerChangeBound)
 			this._localCallParticipantModel.off('change:screenPeer', this._handleScreenPeerChangeBound)
@@ -145,7 +145,7 @@ ParticipantAnalyzer.prototype = {
 		this._receiverScreenPeerConnectionAnalyzer = null
 	},
 
-	setSenderParticipant: function(localMediaModel, localCallParticipantModel) {
+	setSenderParticipant(localMediaModel, localCallParticipantModel) {
 		this.destroy()
 
 		this._localMediaModel = localMediaModel
@@ -163,7 +163,7 @@ ParticipantAnalyzer.prototype = {
 		}
 	},
 
-	setReceiverParticipant: function(callParticipantModel) {
+	setReceiverParticipant(callParticipantModel) {
 		this.destroy()
 
 		this._callParticipantModel = callParticipantModel
@@ -180,7 +180,7 @@ ParticipantAnalyzer.prototype = {
 		}
 	},
 
-	setSenderReceiverParticipant: function(localMediaModel, callParticipantModel) {
+	setSenderReceiverParticipant(localMediaModel, callParticipantModel) {
 		this.destroy()
 
 		this._localMediaModel = localMediaModel
@@ -200,7 +200,7 @@ ParticipantAnalyzer.prototype = {
 		}
 	},
 
-	_handlePeerChange: function(model, peer) {
+	_handlePeerChange(model, peer) {
 		if (this._peer) {
 			this._stopListeningToAudioVideoChanges()
 		}
@@ -212,7 +212,7 @@ ParticipantAnalyzer.prototype = {
 		}
 	},
 
-	_handleScreenPeerChange: function(model, screenPeer) {
+	_handleScreenPeerChange(model, screenPeer) {
 		if (this._screenPeer) {
 			this._stopListeningToScreenChanges()
 		}
@@ -224,7 +224,7 @@ ParticipantAnalyzer.prototype = {
 		}
 	},
 
-	_startListeningToAudioVideoChanges: function() {
+	_startListeningToAudioVideoChanges() {
 		if (this._localMediaModel) {
 			this._senderPeerConnectionAnalyzer.setPeerConnection(this._peer.pc, PEER_DIRECTION.SENDER)
 
@@ -252,21 +252,27 @@ ParticipantAnalyzer.prototype = {
 		}
 	},
 
-	_startListeningToScreenChanges: function() {
+	_startListeningToScreenChanges() {
 		if (this._localMediaModel) {
 			this._senderScreenPeerConnectionAnalyzer.setPeerConnection(this._screenPeer.pc, PEER_DIRECTION.SENDER)
 
 			this._senderScreenPeerConnectionAnalyzer.on('change:connectionQualityVideo', this._handleConnectionQualityScreenChangeBound)
+
+			this._senderScreenPeerConnectionAnalyzer.setAnalysisEnabledAudio(false)
+			this._senderScreenPeerConnectionAnalyzer.setAnalysisEnabledVideo(true)
 		}
 
 		if (this._callParticipantModel) {
 			this._receiverScreenPeerConnectionAnalyzer.setPeerConnection(this._screenPeer.pc, PEER_DIRECTION.RECEIVER)
 
 			this._receiverScreenPeerConnectionAnalyzer.on('change:connectionQualityVideo', this._handleConnectionQualityScreenChangeBound)
+
+			this._receiverScreenPeerConnectionAnalyzer.setAnalysisEnabledAudio(false)
+			this._receiverScreenPeerConnectionAnalyzer.setAnalysisEnabledVideo(true)
 		}
 	},
 
-	_stopListeningToAudioVideoChanges: function() {
+	_stopListeningToAudioVideoChanges() {
 		if (this._localMediaModel) {
 			this._senderPeerConnectionAnalyzer.setPeerConnection(null)
 
@@ -288,7 +294,7 @@ ParticipantAnalyzer.prototype = {
 		}
 	},
 
-	_stopListeningToScreenChanges: function() {
+	_stopListeningToScreenChanges() {
 		if (this._localMediaModel) {
 			this._senderScreenPeerConnectionAnalyzer.setPeerConnection(null)
 
@@ -302,7 +308,7 @@ ParticipantAnalyzer.prototype = {
 		}
 	},
 
-	_handleConnectionQualityAudioChange: function(peerConnectionAnalyzer, connectionQualityAudio) {
+	_handleConnectionQualityAudioChange(peerConnectionAnalyzer, connectionQualityAudio) {
 		if (peerConnectionAnalyzer === this._senderPeerConnectionAnalyzer) {
 			this._trigger('change:senderConnectionQualityAudio', [connectionQualityAudio])
 		} else if (peerConnectionAnalyzer === this._receiverPeerConnectionAnalyzer) {
@@ -310,7 +316,7 @@ ParticipantAnalyzer.prototype = {
 		}
 	},
 
-	_handleConnectionQualityVideoChange: function(peerConnectionAnalyzer, connectionQualityVideo) {
+	_handleConnectionQualityVideoChange(peerConnectionAnalyzer, connectionQualityVideo) {
 		if (peerConnectionAnalyzer === this._senderPeerConnectionAnalyzer) {
 			this._trigger('change:senderConnectionQualityVideo', [connectionQualityVideo])
 		} else if (peerConnectionAnalyzer === this._receiverPeerConnectionAnalyzer) {
@@ -318,7 +324,7 @@ ParticipantAnalyzer.prototype = {
 		}
 	},
 
-	_handleConnectionQualityScreenChange: function(peerConnectionAnalyzer, connectionQualityScreen) {
+	_handleConnectionQualityScreenChange(peerConnectionAnalyzer, connectionQualityScreen) {
 		if (peerConnectionAnalyzer === this._senderScreenPeerConnectionAnalyzer) {
 			this._trigger('change:senderConnectionQualityScreen', [connectionQualityScreen])
 		} else if (peerConnectionAnalyzer === this._receiverScreenPeerConnectionAnalyzer) {
@@ -326,19 +332,19 @@ ParticipantAnalyzer.prototype = {
 		}
 	},
 
-	_handleSenderAudioEnabledChange: function(localMediaModel, audioEnabled) {
+	_handleSenderAudioEnabledChange(localMediaModel, audioEnabled) {
 		this._senderPeerConnectionAnalyzer.setAnalysisEnabledAudio(audioEnabled)
 	},
 
-	_handleSenderVideoEnabledChange: function(localMediaModel, videoEnabled) {
+	_handleSenderVideoEnabledChange(localMediaModel, videoEnabled) {
 		this._senderPeerConnectionAnalyzer.setAnalysisEnabledVideo(videoEnabled)
 	},
 
-	_handleReceiverAudioAvailableChange: function(callParticipantModel, audioAvailable) {
+	_handleReceiverAudioAvailableChange(callParticipantModel, audioAvailable) {
 		this._receiverPeerConnectionAnalyzer.setAnalysisEnabledAudio(audioAvailable)
 	},
 
-	_handleReceiverVideoAvailableChange: function(callParticipantModel, videoAvailable) {
+	_handleReceiverVideoAvailableChange(callParticipantModel, videoAvailable) {
 		this._receiverPeerConnectionAnalyzer.setAnalysisEnabledVideo(videoAvailable)
 	},
 

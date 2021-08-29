@@ -24,7 +24,7 @@
 		:open.sync="showSettings"
 		:show-navigation="true"
 		first-selected-section="keyboard shortcuts"
-		container="#content-vue">
+		:container="container">
 		<AppSettingsSection :title="t('spreed', 'Choose devices')"
 			class="app-settings-section">
 			<MediaDevicesPreview />
@@ -58,16 +58,16 @@
 			:title="t('spreed', 'Sounds')"
 			class="app-settings-section">
 			<input id="play_sounds"
-				v-model="playSounds"
-				:checked="readStatusPrivacyIsPublic"
-				:disabled="privacyLoading"
+				:checked="playSounds"
+				:disabled="playSoundsLoading"
 				type="checkbox"
-				class="checkbox">
-			<label for="play_sounds">{{ t('settings', 'Play sounds when participants join a call or leave it') }}</label>
-			<em>{{ t('settings', 'Sounds can currently not be played in Safari browser and iPad and iPhone devices due to technical restrictions by the manufacturer.') }}</em>
+				class="checkbox"
+				@change="togglePlaySounds">
+			<label for="play_sounds">{{ t('spreed', 'Play sounds when participants join or leave a call') }}</label>
+			<em>{{ t('spreed', 'Sounds can currently not be played in Safari browser and iPad and iPhone devices due to technical restrictions by the manufacturer.') }}</em>
 		</AppSettingsSection>
 		<AppSettingsSection :title="t('spreed', 'Keyboard shortcuts')">
-			<p>{{ t('spreed', 'Speed up your Talk experience with these quick shortcuts.') }}</p>
+			<em>{{ t('spreed', 'Speed up your Talk experience with these quick shortcuts.') }}</em>
 
 			<dl>
 				<div>
@@ -129,10 +129,6 @@
 
 <script>
 import { getFilePickerBuilder, showError, showSuccess } from '@nextcloud/dialogs'
-import {
-	setAttachmentFolder,
-	setPlaySounds,
-} from '../../services/settingsService'
 import { PRIVACY } from '../../constants'
 import { subscribe, unsubscribe } from '@nextcloud/event-bus'
 import MediaDevicesPreview from '../MediaDevicesPreview'
@@ -153,23 +149,17 @@ export default {
 			showSettings: false,
 			attachmentFolderLoading: true,
 			privacyLoading: false,
+			playSoundsLoading: false,
 		}
 	},
 
 	computed: {
-		// Local settings
-		playSounds: {
-			get() {
-				return this.$store.getters.playSounds
-			},
-			set(status) {
-				this.$store.commit('setPlaySounds', status)
-				try {
-					setPlaySounds(status)
-				} catch (e) {
-					showError(t('spreed', 'Failed to save sounds setting'))
-				}
-			},
+		container() {
+			return this.$store.getters.getMainContainerSelector()
+		},
+
+		playSounds() {
+			return this.$store.getters.playSounds
 		},
 
 		attachmentFolder() {
@@ -177,7 +167,7 @@ export default {
 		},
 
 		locationHint() {
-			return t('spreed', 'Choose in which folder attachments should be saved.')
+			return t('spreed', 'Choose the folder in which attachments should be saved.')
 		},
 
 		isGuest() {
@@ -210,20 +200,17 @@ export default {
 				.startAt(this.attachmentFolder)
 				.build()
 			picker.pick()
-				.then(async(path) => {
+				.then(async (path) => {
 					console.debug(`Path '${path}' selected for talk attachments`)
 					if (path !== '' && !path.startsWith('/')) {
 						throw new Error(t('spreed', 'Invalid path selected'))
 					}
 
-					const oldFolder = this.attachmentFolder
 					this.attachmentFolderLoading = true
 					try {
-						this.$store.commit('setAttachmentFolder', path)
-						await setAttachmentFolder(path)
+						this.$store.dispatch('setAttachmentFolder', path)
 					} catch (exception) {
 						showError(t('spreed', 'Error while setting attachment folder'))
-						this.$store.commit('setAttachmentFolder', oldFolder)
 					}
 					this.attachmentFolderLoading = false
 				})
@@ -241,6 +228,21 @@ export default {
 				showError(t('spreed', 'Error while setting read status privacy'))
 			}
 			this.privacyLoading = false
+		},
+
+		async togglePlaySounds() {
+			this.playSoundsLoading = true
+			try {
+				try {
+					await this.$store.dispatch('setPlaySounds', !this.playSounds)
+				} catch (e) {
+					showError(t('spreed', 'Failed to save sounds setting'))
+				}
+				showSuccess(t('spreed', 'Sounds setting saved'))
+			} catch (exception) {
+				showError(t('spreed', 'Error while saving sounds setting'))
+			}
+			this.playSoundsLoading = false
 		},
 
 		handleShowSettings() {

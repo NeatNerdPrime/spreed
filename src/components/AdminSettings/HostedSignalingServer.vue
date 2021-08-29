@@ -205,8 +205,8 @@ export default {
 		this.trialAccount = loadState('spreed', 'hosted_signaling_server_trial_data')
 
 		const languagesAndCountries = loadState('spreed', 'hosted_signaling_server_language_data')
-		this.languages = languagesAndCountries['languages'] // two lists of {code: "es", name: "Español"} - one is in 'commonlanguages' and one in 'languages'
-		this.countries = languagesAndCountries['countries'] // list of {code: "France", name: "France"}
+		this.languages = languagesAndCountries.languages // two lists of {code: "es", name: "Español"} - one is in 'commonlanguages' and one in 'languages'
+		this.countries = languagesAndCountries.countries // list of {code: "France", name: "France"}
 
 		const signaling = loadState('spreed', 'signaling_servers')
 		this.showForm = this.trialAccount.length !== 0
@@ -218,7 +218,7 @@ export default {
 			this.requestError = ''
 			this.loading = true
 			try {
-				const res = await axios.post(generateOcsUrl('apps/spreed/api/v1/hostedsignalingserver', 2) + 'requesttrial', {
+				const res = await axios.post(generateOcsUrl('apps/spreed/api/v1/hostedsignalingserver/requesttrial'), {
 					url: this.hostedHPBNextcloudUrl,
 					name: this.hostedHPBFullName,
 					email: this.hostedHPBEmail,
@@ -239,7 +239,7 @@ export default {
 			this.loading = true
 
 			try {
-				await axios.delete(generateOcsUrl('apps/spreed/api/v1/hostedsignalingserver', 2) + 'delete')
+				await axios.delete(generateOcsUrl('apps/spreed/api/v1/hostedsignalingserver/delete'))
 
 				this.trialAccount = []
 			} catch (err) {

@@ -2,7 +2,7 @@
  *
  * @copyright Copyright (c) 2019, Daniel Calviño Sánchez (danxuliu@gmail.com)
  *
- * @license GNU AGPL version 3 or any later version
+ * @license AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -46,6 +46,9 @@ let cancelFetchSignalingSettings = null
 let signaling = null
 let tokensInSignaling = {}
 
+/**
+ * @param token
+ */
 async function getSignalingSettings(token) {
 	// If getSignalingSettings is called again while a previous one was still
 	// being executed the previous one is cancelled.
@@ -76,6 +79,9 @@ async function getSignalingSettings(token) {
 	return settings
 }
 
+/**
+ * @param token
+ */
 async function connectSignaling(token) {
 	const settings = await getSignalingSettings(token)
 	if (!settings) {
@@ -104,6 +110,10 @@ let pendingJoinCallToken = null
 let startedCall = null
 let failedToStartCall = null
 
+/**
+ * @param signaling
+ * @param configuration
+ */
 function startCall(signaling, configuration) {
 	let flags = PARTICIPANT.CALL_FLAG.IN_CALL
 	if (configuration) {
@@ -116,29 +126,23 @@ function startCall(signaling, configuration) {
 	}
 
 	signaling.joinCall(pendingJoinCallToken, flags).then(() => {
-		startedCall()
+		startedCall(flags)
 	}).catch(error => {
 		failedToStartCall(error)
 	})
 }
 
+/**
+ *
+ */
 function setupWebRtc() {
 	if (webRtc) {
 		return
 	}
 
-	const _signaling = signaling
-
-	webRtc = initWebRtc(_signaling, callParticipantCollection, localCallParticipantModel)
+	webRtc = initWebRtc(signaling, callParticipantCollection, localCallParticipantModel)
 	localCallParticipantModel.setWebRtc(webRtc)
 	localMediaModel.setWebRtc(webRtc)
-
-	webRtc.on('localMediaStarted', (configuration) => {
-		startCall(_signaling, configuration)
-	})
-	webRtc.on('localMediaError', () => {
-		startCall(_signaling, null)
-	})
 }
 
 /**
@@ -146,7 +150,7 @@ function setupWebRtc() {
  *
  * @param {string} token Conversation to join
  * @param {string} sessionId Session id to join with
- * @returns {Promise<void>}
+ * @return {Promise<void>}
  */
 async function signalingJoinConversation(token, sessionId) {
 	await connectSignaling(token)
@@ -159,9 +163,11 @@ async function signalingJoinConversation(token, sessionId) {
  * Join the call of the given conversation
  *
  * @param {string} token Conversation to join the call
- * @returns {Promise<void>}
+ * @param {int} flags Bitwise combination of PARTICIPANT.CALL_FLAG
+ * @return {Promise<void>} Resolved with the actual flags based on the
+ *          available media
  */
-async function signalingJoinCall(token) {
+async function signalingJoinCall(token, flags) {
 	if (tokensInSignaling[token]) {
 		pendingJoinCallToken = token
 
@@ -175,11 +181,47 @@ async function signalingJoinCall(token) {
 			callAnalyzer = new CallAnalyzer(localMediaModel, null, callParticipantCollection)
 		}
 
+		const _signaling = signaling
+
 		return new Promise((resolve, reject) => {
 			startedCall = resolve
 			failedToStartCall = reject
 
-			webRtc.startMedia(token)
+			// The previous state might be wiped after the media is started, so
+			// it should be saved now.
+			const enableAudio = !localStorage.getItem('audioDisabled_' + token)
+			const enableVideo = !localStorage.getItem('videoDisabled_' + token)
+
+			const startCallOnceLocalMediaStarted = (configuration) => {
+				webRtc.off('localMediaStarted', startCallOnceLocalMediaStarted)
+				webRtc.off('localMediaError', startCallOnceLocalMediaError)
+
+				if (enableAudio) {
+					localMediaModel.enableAudio()
+				} else {
+					localMediaModel.disableAudio()
+				}
+				if (enableVideo) {
+					localMediaModel.enableVideo()
+				} else {
+					localMediaModel.disableVideo()
+				}
+
+				startCall(_signaling, configuration)
+			}
+			const startCallOnceLocalMediaError = () => {
+				webRtc.off('localMediaStarted', startCallOnceLocalMediaStarted)
+				webRtc.off('localMediaError', startCallOnceLocalMediaError)
+
+				startCall(_signaling, null)
+			}
+
+			// ".once" can not be used, as both handlers need to be removed when
+			// just one of them is executed.
+			webRtc.on('localMediaStarted', startCallOnceLocalMediaStarted)
+			webRtc.on('localMediaError', startCallOnceLocalMediaError)
+
+			webRtc.startMedia(token, flags)
 		})
 	}
 }
@@ -188,7 +230,7 @@ async function signalingJoinCall(token) {
  * Leave the call of the given conversation
  *
  * @param {string} token Conversation to leave the call
- * @returns {Promise<void>}
+ * @return {Promise<void>}
  */
 async function signalingLeaveCall(token) {
 	sentVideoQualityThrottler.destroy()
@@ -206,7 +248,7 @@ async function signalingLeaveCall(token) {
  * Leave the given conversation on the respective signaling server
  *
  * @param {string} token Conversation to leave
- * @returns {Promise<void>}
+ * @return {Promise<void>}
  */
 async function signalingLeaveConversation(token) {
 	if (tokensInSignaling[token]) {

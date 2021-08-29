@@ -392,6 +392,9 @@ class FeatureContext implements Context, SnippetAcceptingContext {
 				if (isset($expectedKeys['attendeePin'])) {
 					$data['attendeePin'] = $attendee['attendeePin'] ? '**PIN**' : '';
 				}
+				if (isset($expectedKeys['publishingPermissions'])) {
+					$data['publishingPermissions'] = (string) $attendee['publishingPermissions'];
+				}
 
 				if (!isset(self::$userToAttendeeId[$attendee['actorType']])) {
 					self::$userToAttendeeId[$attendee['actorType']] = [];
@@ -407,6 +410,9 @@ class FeatureContext implements Context, SnippetAcceptingContext {
 				}
 				if (isset($attendee['participantType'])) {
 					$attendee['participantType'] = (string)$this->mapParticipantTypeTestInput($attendee['participantType']);
+				}
+				if (isset($attendee['publishingPermissions'])) {
+					$attendee['publishingPermissions'] = (string)$this->mapPublishingPermissionsTestInput($attendee['publishingPermissions']);
 				}
 				return $attendee;
 			}, $formData->getHash());
@@ -442,7 +448,7 @@ class FeatureContext implements Context, SnippetAcceptingContext {
 	}
 
 	protected function sortAttendees(array $a1, array $a2): int {
-		if ($a1['participantType'] !== $a2['participantType']) {
+		if (array_key_exists('participantType', $a1) && array_key_exists('participantType', $a2) && $a1['participantType'] !== $a2['participantType']) {
 			return $a1['participantType'] <=> $a2['participantType'];
 		}
 		if ($a1['actorType'] !== $a2['actorType']) {
@@ -466,6 +472,22 @@ class FeatureContext implements Context, SnippetAcceptingContext {
 		}
 
 		Assert::fail('Invalid test input value for participant type');
+	}
+
+	private function mapPublishingPermissionsTestInput($publishingPermissions) {
+		if (is_numeric($publishingPermissions)) {
+			return $publishingPermissions;
+		}
+
+		switch ($publishingPermissions) {
+			case 'NONE': return 0;
+			case 'AUDIO': return 1;
+			case 'VIDEO': return 2;
+			case 'SCREENSHARING': return 4;
+			case 'ALL': return 7;
+		}
+
+		Assert::fail('Invalid test input value for publishing permissions');
 	}
 
 	/**
@@ -1056,6 +1078,52 @@ class FeatureContext implements Context, SnippetAcceptingContext {
 	}
 
 	/**
+	 * @When /^user "([^"]*)" sets publishing permissions for "([^"]*)" in room "([^"]*)" to "([^"]*)" with (\d+) \((v4)\)$/
+	 *
+	 * @param string $user
+	 * @param string $identifier
+	 * @param string $publishingPermissionsString
+	 * @param int $statusCode
+	 * @param string $apiVersion
+	 */
+	public function userSetsPublishingPermissionsForInRoomTo(string $user, string $participant, string $identifier, string $publishingPermissionsString, int $statusCode, string $apiVersion): void {
+		if ($participant === 'stranger') {
+			$attendeeId = 123456789;
+		} elseif (strpos($participant, 'guest') === 0) {
+			$sessionId = self::$userToSessionId[$participant];
+			$attendeeId = $this->getAttendeeId('guests', sha1($sessionId), $identifier, $statusCode === 200 ? $user : null);
+		} else {
+			$attendeeId = $this->getAttendeeId('users', $participant, $identifier, $statusCode === 200 ? $user : null);
+		}
+
+		if ($publishingPermissionsString === 'NONE') {
+			$publishingPermissions = 0;
+		} elseif ($publishingPermissionsString === 'AUDIO') {
+			$publishingPermissions = 1;
+		} elseif ($publishingPermissionsString === 'VIDEO') {
+			$publishingPermissions = 2;
+		} elseif ($publishingPermissionsString === 'SCREENSHARING') {
+			$publishingPermissions = 4;
+		} elseif ($publishingPermissionsString === 'ALL') {
+			$publishingPermissions = 7;
+		} else {
+			Assert::fail('Invalid publishing permissions');
+		}
+
+		$requestParameters = [
+			['attendeeId', $attendeeId],
+			['state', $publishingPermissions],
+		];
+
+		$this->setCurrentUser($user);
+		$this->sendRequest(
+			'PUT', '/apps/spreed/api/' . $apiVersion . '/room/' . self::$identifierToToken[$identifier] . '/attendees/publishing-permissions',
+			new TableNode($requestParameters)
+		);
+		$this->assertStatusCode($this->response, $statusCode);
+	}
+
+	/**
 	 * @Then /^user "([^"]*)" joins call "([^"]*)" with (\d+) \((v4)\)$/
 	 *
 	 * @param string $user
@@ -1081,6 +1149,24 @@ class FeatureContext implements Context, SnippetAcceptingContext {
 			self::$sessionIdToUser[sha1($response['sessionId'])] = $user;
 			self::$userToSessionId[$user] = $response['sessionId'];
 		}
+	}
+
+	/**
+	 * @Then /^user "([^"]*)" updates call flags in room "([^"]*)" to "([^"]*)" with (\d+) \((v4)\)$/
+	 *
+	 * @param string $user
+	 * @param string $identifier
+	 * @param string $flags
+	 * @param int $statusCode
+	 * @param string $apiVersion
+	 */
+	public function userUpdatesCallFlagsInRoomTo(string $user, string $identifier, string $flags, int $statusCode, string $apiVersion): void {
+		$this->setCurrentUser($user);
+		$this->sendRequest(
+			'PUT', '/apps/spreed/api/' . $apiVersion . '/call/' . self::$identifierToToken[$identifier],
+			new TableNode([['flags', $flags]])
+		);
+		$this->assertStatusCode($this->response, $statusCode);
 	}
 
 	/**
@@ -1187,6 +1273,22 @@ class FeatureContext implements Context, SnippetAcceptingContext {
 		$this->sendRequest(
 			'DELETE', '/apps/spreed/api/' . $apiVersion . '/chat/' . self::$identifierToToken[$identifier] . '/' . self::$messages[$message],
 			new TableNode([['message', $message]])
+		);
+		$this->assertStatusCode($this->response, $statusCode);
+	}
+
+	/**
+	 * @Then /^user "([^"]*)" deletes chat history for room "([^"]*)" with (\d+)(?: \((v1)\))?$/
+	 *
+	 * @param string $user
+	 * @param string $identifier
+	 * @param int $statusCode
+	 * @param string $apiVersion
+	 */
+	public function userDeletesHistoryFromRoom(string $user, string $identifier, int $statusCode, string $apiVersion = 'v1'): void {
+		$this->setCurrentUser($user);
+		$this->sendRequest(
+			'DELETE', '/apps/spreed/api/' . $apiVersion . '/chat/' . self::$identifierToToken[$identifier]
 		);
 		$this->assertStatusCode($this->response, $statusCode);
 	}

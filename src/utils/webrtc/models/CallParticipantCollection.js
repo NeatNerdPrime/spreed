@@ -2,7 +2,7 @@
  *
  * @copyright Copyright (c) 2019, Daniel Calviño Sánchez (danxuliu@gmail.com)
  *
- * @license GNU AGPL version 3 or any later version
+ * @license AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -21,6 +21,9 @@
 
 import CallParticipantModel from './CallParticipantModel'
 
+/**
+ *
+ */
 export default function CallParticipantCollection() {
 
 	this.callParticipantModels = []
@@ -31,15 +34,15 @@ export default function CallParticipantCollection() {
 
 CallParticipantCollection.prototype = {
 
-	on: function(event, handler) {
-		if (!this._handlers.hasOwnProperty(event)) {
+	on(event, handler) {
+		if (!Object.prototype.hasOwnProperty.call(this._handlers, event)) {
 			this._handlers[event] = [handler]
 		} else {
 			this._handlers[event].push(handler)
 		}
 	},
 
-	off: function(event, handler) {
+	off(event, handler) {
 		const handlers = this._handlers[event]
 		if (!handlers) {
 			return
@@ -51,7 +54,7 @@ CallParticipantCollection.prototype = {
 		}
 	},
 
-	_trigger: function(event, args) {
+	_trigger(event, args) {
 		let handlers = this._handlers[event]
 		if (!handlers) {
 			return
@@ -66,7 +69,7 @@ CallParticipantCollection.prototype = {
 		}
 	},
 
-	add: function(options) {
+	add(options) {
 		const callParticipantModel = new CallParticipantModel(options)
 		this.callParticipantModels.push(callParticipantModel)
 
@@ -75,13 +78,13 @@ CallParticipantCollection.prototype = {
 		return callParticipantModel
 	},
 
-	get: function(peerId) {
+	get(peerId) {
 		return this.callParticipantModels.find(function(callParticipantModel) {
 			return callParticipantModel.attributes.peerId === peerId
 		})
 	},
 
-	remove: function(peerId) {
+	remove(peerId) {
 		const index = this.callParticipantModels.findIndex(function(callParticipantModel) {
 			return callParticipantModel.attributes.peerId === peerId
 		})

@@ -228,6 +228,7 @@ class PageController extends Controller {
 					$passwordVerification = $room->verifyPassword($password);
 
 					if ($passwordVerification['result']) {
+						$this->talkSession->renewSessionId();
 						$this->talkSession->setPasswordForRoom($token, $password);
 					} else {
 						$this->talkSession->removePasswordForRoom($token);
@@ -261,6 +262,15 @@ class PageController extends Controller {
 		$csp = new ContentSecurityPolicy();
 		$csp->addAllowedConnectDomain('*');
 		$csp->addAllowedMediaDomain('blob:');
+		$csp->addAllowedWorkerSrcDomain('blob:');
+		$csp->addAllowedWorkerSrcDomain("'self'");
+		$csp->addAllowedChildSrcDomain('blob:');
+		$csp->addAllowedChildSrcDomain("'self'");
+		$csp->addAllowedScriptDomain('blob:');
+		$csp->addAllowedScriptDomain("'self'");
+		$csp->addAllowedConnectDomain('blob:');
+		$csp->addAllowedConnectDomain("'self'");
+		$csp->addAllowedImageDomain('https://*.tile.openstreetmap.org');
 		$response->setContentSecurityPolicy($csp);
 		return $response;
 	}
@@ -292,6 +302,7 @@ class PageController extends Controller {
 
 			$passwordVerification = $room->verifyPassword($password);
 			if ($passwordVerification['result']) {
+				$this->talkSession->renewSessionId();
 				$this->talkSession->setPasswordForRoom($token, $password);
 			} else {
 				$this->talkSession->removePasswordForRoom($token);
@@ -312,6 +323,15 @@ class PageController extends Controller {
 		$csp = new ContentSecurityPolicy();
 		$csp->addAllowedConnectDomain('*');
 		$csp->addAllowedMediaDomain('blob:');
+		$csp->addAllowedWorkerSrcDomain('blob:');
+		$csp->addAllowedWorkerSrcDomain("'self'");
+		$csp->addAllowedChildSrcDomain('blob:');
+		$csp->addAllowedChildSrcDomain("'self'");
+		$csp->addAllowedScriptDomain('blob:');
+		$csp->addAllowedScriptDomain("'self'");
+		$csp->addAllowedConnectDomain('blob:');
+		$csp->addAllowedConnectDomain("'self'");
+		$csp->addAllowedImageDomain('https://*.tile.openstreetmap.org');
 		$response->setContentSecurityPolicy($csp);
 		return $response;
 	}

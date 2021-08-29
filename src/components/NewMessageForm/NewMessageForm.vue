@@ -38,14 +38,20 @@
 				class="new-message-form"
 				@submit.prevent>
 				<div
-					v-if="canUploadFiles || canShareFiles">
+					v-if="canUploadFiles || canShareFiles"
+					class="new-message-form__upload-menu">
 					<Actions
 						ref="uploadMenu"
-						container="#content-vue"
+						:container="container"
+						:boundaries-element="containerElement"
 						:disabled="disabled"
-						default-icon="icon-clip-add-file"
 						:aria-label="t('spreed', 'Share files to the conversation')"
 						:aria-haspopup="true">
+						<Paperclip
+							slot="icon"
+							:size="16"
+							decorative
+							title="" />
 						<ActionButton
 							v-if="canUploadFiles"
 							:close-after-click="true"
@@ -62,24 +68,24 @@
 						</ActionButton>
 					</Actions>
 				</div>
-				<div>
-					<EmojiPicker
-						container="#content-vue"
-						@select="addEmoji">
-						<button
-							type="button"
-							:disabled="disabled"
-							class="nc-button nc-button__main"
-							:aria-label="t('spreed', 'Add emoji')"
-							:aria-haspopup="true">
-							<EmoticonOutline
-								:size="16"
-								decorative
-								title="" />
-						</button>
-					</EmojiPicker>
-				</div>
 				<div class="new-message-form__input">
+					<div class="new-message-form__emoji-picker">
+						<EmojiPicker
+							:container="container"
+							@select="addEmoji">
+							<button
+								type="button"
+								:disabled="disabled"
+								class="nc-button nc-button__main emoji-picker-button"
+								:aria-label="t('spreed', 'Add emoji')"
+								:aria-haspopup="true">
+								<EmoticonOutline
+									:size="16"
+									decorative
+									title="" />
+							</button>
+						</EmojiPicker>
+					</div>
 					<div v-if="messageToBeReplied" class="new-message-form__quote">
 						<Quote
 							:is-new-message-form-quote="true"
@@ -98,11 +104,19 @@
 						@submit="handleSubmit"
 						@files-pasted="handlePastedFiles" />
 				</div>
+
+				<AudioRecorder
+					v-if="!hasText && canUploadFiles"
+					:disabled="disabled"
+					@recording="handleRecording"
+					@audio-file="handleAudioFile" />
+
 				<button
+					v-else
 					:disabled="disabled"
 					type="submit"
 					:aria-label="t('spreed', 'Send message')"
-					class="nc-button nc-button__main"
+					class="nc-button nc-button__main new-message-form__send-button"
 					@click.prevent="handleSubmit">
 					<Send
 						title=""
@@ -116,8 +130,7 @@
 
 <script>
 import AdvancedInput from './AdvancedInput/AdvancedInput'
-import { getFilePickerBuilder, showError } from '@nextcloud/dialogs'
-import { postNewMessage } from '../../services/messagesService'
+import { getFilePickerBuilder } from '@nextcloud/dialogs'
 import { getCapabilities } from '@nextcloud/capabilities'
 import Quote from '../Quote'
 import Actions from '@nextcloud/vue/dist/Components/Actions'
@@ -125,12 +138,11 @@ import ActionButton from '@nextcloud/vue/dist/Components/ActionButton'
 import EmojiPicker from '@nextcloud/vue/dist/Components/EmojiPicker'
 import { EventBus } from '../../services/EventBus'
 import { shareFile } from '../../services/filesSharingServices'
-import { processFiles } from '../../utils/fileUpload'
 import { CONVERSATION } from '../../constants'
-import createTemporaryMessage from '../../utils/temporaryMessage'
+import Paperclip from 'vue-material-design-icons/Paperclip'
 import EmoticonOutline from 'vue-material-design-icons/EmoticonOutline'
 import Send from 'vue-material-design-icons/Send'
-import CancelableRequest from '../../utils/cancelableRequest'
+import AudioRecorder from './AudioRecorder/AudioRecorder'
 
 const picker = getFilePickerBuilder(t('spreed', 'File to share'))
 	.setMultiSelect(false)
@@ -146,9 +158,11 @@ export default {
 		Quote,
 		Actions,
 		ActionButton,
+		Paperclip,
 		EmojiPicker,
 		EmoticonOutline,
 		Send,
+		AudioRecorder,
 	},
 
 	props: {
@@ -157,18 +171,22 @@ export default {
 			required: true,
 		},
 	},
-	data: function() {
+
+	data() {
 		return {
 			text: '',
 			parsedText: '',
 			conversationIsFirstInList: false,
+			// True when the audiorecorder component is recording
+			isRecordingAudio: false,
 		}
 	},
+
 	computed: {
 		/**
 		 * The current conversation token
 		 *
-		 * @returns {String}
+		 * @return {string}
 		 */
 		token() {
 			return this.$store.getters.getToken()
@@ -185,11 +203,11 @@ export default {
 		},
 
 		disabled() {
-			return this.isReadOnly || !this.currentConversationIsJoined
+			return this.isReadOnly || !this.currentConversationIsJoined || this.isRecordingAudio
 		},
 
 		placeholderText() {
-			if (this.isReadonly) {
+			if (this.isReadOnly) {
 				return t('spreed', 'This conversation has been locked')
 			} else if (!this.currentConversationIsJoined) {
 				return t('spreed', 'Joining conversation …')
@@ -224,9 +242,25 @@ export default {
 		currentConversationIsJoined() {
 			return this.$store.getters.currentConversationIsJoined
 		},
+
+		hasText() {
+			return this.parsedText !== ''
+		},
+
+		container() {
+			return this.$store.getters.getMainContainerSelector()
+		},
+
+		containerElement() {
+			return document.querySelector(this.container)
+		},
 	},
 
 	watch: {
+		currentConversationIsJoined(newValue) {
+			this.$refs.advancedInput.focusInput()
+		},
+
 		disabled(newValue) {
 			// the menu is not always available
 			if (!this.$refs.uploadMenu) {
@@ -249,14 +283,15 @@ export default {
 	},
 
 	mounted() {
-		EventBus.$on('uploadStart', this.handleUploadStart)
-		EventBus.$on('retryMessage', this.handleRetryMessage)
+		EventBus.$on('upload-start', this.handleUploadStart)
+		EventBus.$on('retry-message', this.handleRetryMessage)
 		this.text = this.$store.getters.currentMessageInput(this.token) || ''
+		// this.startRecording()
 	},
 
 	beforeDestroy() {
-		EventBus.$off('uploadStart', this.handleUploadStart)
-		EventBus.$off('retryMessage', this.handleRetryMessage)
+		EventBus.$off('upload-start', this.handleUploadStart)
+		EventBus.$off('retry-message', this.handleRetryMessage)
 	},
 
 	methods: {
@@ -288,11 +323,13 @@ export default {
 		 *
 		 * The parsed text is also trimmed.
 		 *
-		 * @param {String} text the raw text
-		 * @returns {String} the parsed text
+		 * @param {string} text the raw text
+		 * @return {string} the parsed text
 		 */
 		rawToParsed(text) {
 			text = text.replace(/<br>/g, '\n')
+			text = text.replace(/<div>/g, '\n')
+			text = text.replace(/<\/div>/g, '')
 			text = text.replace(/&nbsp;/g, ' ')
 
 			// Since we used innerHTML to get the content of the div.contenteditable
@@ -315,86 +352,45 @@ export default {
 		 * Sends the new message
 		 */
 		async handleSubmit() {
+			if (OC.debug && this.parsedText.startsWith('/spam ')) {
+				const pattern = /^\/spam (\d+) messages$/i
+				const match = pattern.exec(this.parsedText)
+				// Escape HTML
+				if (match) {
+					await this.handleSubmitSpam(match[1])
+					return
+				}
+			}
+
 			if (this.parsedText !== '') {
-				const temporaryMessage = createTemporaryMessage(this.parsedText, this.token)
+				const temporaryMessage = await this.$store.dispatch('createTemporaryMessage', { text: this.parsedText, token: this.token })
+				// FIXME: move "addTemporaryMessage" into "postNewMessage" as it's a pre-requisite anyway ?
 				this.$store.dispatch('addTemporaryMessage', temporaryMessage)
 				this.text = ''
 				this.parsedText = ''
 				// Scrolls the message list to the last added message
-				EventBus.$emit('smoothScrollChatToBottom')
+				EventBus.$emit('smooth-scroll-chat-to-bottom')
 				// Also remove the message to be replied for this conversation
 				this.$store.dispatch('removeMessageToBeReplied', this.token)
-				let timeout
-				try {
-					// Posts the message to the server
-					const { request, cancel } = CancelableRequest(postNewMessage)
-
-					timeout = setTimeout(() => {
-						cancel('canceled')
-						this.$store.dispatch('markTemporaryMessageAsFailed', {
-							message: temporaryMessage,
-							reason: 'timeout',
-						})
-					}, 30000)
-					const response = await request(temporaryMessage)
-					clearTimeout(timeout)
-
-					// If successful, deletes the temporary message from the store
-					this.$store.dispatch('removeTemporaryMessageFromStore', temporaryMessage)
-
-					const message = response.data.ocs.data
-					// And adds the complete version of the message received
-					// by the server
-					this.$store.dispatch('processMessage', message)
-
-					// update lastMessage and lastReadMessage
-					// do it conditionally because there could have been more messages appearing concurrently
-					if (this.conversation.lastMessage && message.id > this.conversation.lastMessage.id) {
-						this.$store.dispatch('updateConversationLastMessage', {
-							token: this.token,
-							lastMessage: message,
-						})
-					}
-					if (message.id > this.conversation.lastReadMessage) {
-						this.$store.dispatch('updateLastReadMessage', {
-							token: this.token,
-							id: message.id,
-							updateVisually: true,
-						})
-					}
-				} catch (error) {
-					let statusCode = null
-					console.debug(`error while submitting message ${error}`, error)
-					if (error.isAxiosError) {
-						statusCode = error?.response?.status
-					}
-
-					if (timeout) {
-						clearTimeout(timeout)
-					}
-
-					// 403 when room is read-only, 412 when switched to lobby mode
-					if (statusCode === 403) {
-						showError(t('spreed', 'No permission to post messages in this conversation'))
-						this.$store.dispatch('markTemporaryMessageAsFailed', {
-							message: temporaryMessage,
-							reason: 'read-only',
-						})
-					} else if (statusCode === 412) {
-						showError(t('spreed', 'No permission to post messages in this conversation'))
-						this.$store.dispatch('markTemporaryMessageAsFailed', {
-							message: temporaryMessage,
-							reason: 'lobby',
-						})
-					} else {
-						showError(t('spreed', 'Could not post message: {errorMessage}', { errorMessage: error.message || error }))
-						this.$store.dispatch('markTemporaryMessageAsFailed', {
-							message: temporaryMessage,
-							reason: 'other',
-						})
-					}
-				}
+				await this.$store.dispatch('postNewMessage', temporaryMessage)
 			}
+		},
+
+		async handleSubmitSpam(numberOfMessages) {
+			console.debug('Sending ' + numberOfMessages + ' lorem ipsum messages')
+			for (let i = 0; i < numberOfMessages; i++) {
+				const randomNumber = parseInt(Math.random() * 500, 10)
+				console.debug('[' + i + '/' + numberOfMessages + '] Sleeping ' + randomNumber + 'ms')
+				await this.sleep(randomNumber)
+
+				const loremIpsum = 'Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.\n\nDuis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi. Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat.'
+				this.parsedText = loremIpsum.substr(0, 25 + randomNumber)
+				await this.handleSubmit()
+			}
+		},
+
+		sleep(ms) {
+			return new Promise(resolve => setTimeout(resolve, ms))
 		},
 
 		handleRetryMessage(temporaryMessageId) {
@@ -403,14 +399,14 @@ export default {
 				if (temporaryMessage) {
 					this.text = temporaryMessage.message || this.text
 					this.parsedText = temporaryMessage.message || this.parsedText
-					this.$store.dispatch('deleteMessage', temporaryMessage)
+					this.$store.dispatch('removeTemporaryMessageFromStore', temporaryMessage)
 				}
 			}
 		},
 
 		async handleFileShare() {
 			picker.pick()
-				.then(async(path) => {
+				.then(async (path) => {
 					console.debug(`path ${path} selected for sharing`)
 					if (!path.startsWith('/')) {
 						throw new Error(t('files', 'Invalid path selected'))
@@ -452,12 +448,13 @@ export default {
 		 *
 		 * @param {File[] | FileList} files pasted files list
 		 * @param {bool} rename whether to rename the files
+		 * @param {bool} isVoiceMessage indicates whether the file is a vooicemessage
 		 */
-		async handleFiles(files, rename = false) {
+		async handleFiles(files, rename = false, isVoiceMessage) {
 			// Create a unique id for the upload operation
 			const uploadId = new Date().getTime()
 			// Uploads and shares the files
-			await processFiles(files, this.token, uploadId, rename)
+			await this.$store.dispatch('initialiseUpload', { files, token: this.token, uploadId, rename, isVoiceMessage })
 		},
 
 		/**
@@ -507,6 +504,14 @@ export default {
 
 			range.setStartAfter(emojiTextNode)
 		},
+
+		handleAudioFile(payload) {
+			this.handleFiles([payload], false, true)
+		},
+
+		handleRecording(payload) {
+			this.isRecordingAudio = payload
+		},
 	},
 }
 </script>
@@ -515,29 +520,46 @@ export default {
 @import '../../assets/buttons';
 
 .wrapper {
-	position: sticky;
-	bottom: 0;
 	display: flex;
 	justify-content: center;
 	padding: 12px 0;
 	border-top: 1px solid var(--color-border);
+	min-height: 69px;
 	&--chatScrolledToBottom {
 		border-top: none;
 	}
 }
 
 .new-message {
-	max-width: $messages-list-max-width + 145px;
-	flex: 1 1 100%;
+	width: 100%;
+	display: flex;
+	justify-content: center;
 	&-form {
-		display: flex;
 		align-items: flex-end;
+		display: flex;
+		position:relative;
+		flex: 0 1 700px;
+		margin: 0 4px;
+		&__emoji-picker {
+			position: absolute;
+			left: 5px;
+			bottom: 1px;
+			z-index: 1;
+			.emoji-picker-button {
+				opacity: .7;
+				&:hover,
+				&:active,
+				&:focus {
+					opacity: 1;
+					background-color: transparent;
+				}
+			}
+		}
+
 		&__input {
 			flex-grow: 1;
-			max-height: $message-form-max-height;
-			overflow-y: auto;
-			overflow-x: hidden;
-			max-width: 638px;
+			overflow: hidden;
+			position: relative;
 		}
 		&__quote {
 			margin: 0 16px 12px 24px;
@@ -560,13 +582,15 @@ export default {
 }
 
 // Override actions styles TODO: upstream this change
-::v-deep .action-item__menutoggle {
-	opacity: .8 !important;
+// Targeting two classess for specificity
+::v-deep .action-item__menutoggle.action-item__menutoggle--with-icon-slot {
+	opacity: 1 !important;
 	&:hover,
 	&:focus {
 		background-color: var(--color-background-hover) !important;
-		opacity: .8 !important;
+	}
+	&:disabled {
+		opacity: .5 !important;
 	}
 }
-
 </style>

@@ -29,7 +29,7 @@
 				class="conversations-search"
 				:is-searching="isSearching"
 				@input="debounceFetchSearchResults"
-				@keypress.enter.prevent.stop="onInputEnter"
+				@submit="onInputEnter"
 				@abort-search="abortSearch" />
 			<NewGroupConversation
 				v-if="canStartConversations" />
@@ -39,7 +39,7 @@
 				ref="scroller"
 				class="left-sidebar__list"
 				@scroll="debounceHandleScroll">
-				<Caption v-if="isSearching"
+				<AppNavigationCaption v-if="isSearching"
 					:title="t('spreed', 'Conversations')" />
 				<li role="presentation">
 					<ConversationsList
@@ -52,7 +52,7 @@
 				</li>
 				<template v-if="isSearching">
 					<template v-if="!listedConversationsLoading && searchResultsListedConversations.length > 0">
-						<Caption
+						<AppNavigationCaption
 							:title="t('spreed', 'Open conversations')" />
 						<Conversation
 							v-for="item of searchResultsListedConversations"
@@ -62,7 +62,7 @@
 							@click="joinListedConversation(item)" />
 					</template>
 					<template v-if="searchResultsUsers.length !== 0">
-						<Caption
+						<AppNavigationCaption
 							:title="t('spreed', 'Users')" />
 						<li v-if="searchResultsUsers.length !== 0" role="presentation">
 							<ConversationsOptionsList
@@ -71,7 +71,7 @@
 						</li>
 					</template>
 					<template v-if="!showStartConversationsOptions">
-						<Caption v-if="searchResultsUsers.length === 0"
+						<AppNavigationCaption v-if="searchResultsUsers.length === 0"
 							:title="t('spreed', 'Users')" />
 						<Hint v-if="contactsLoading" :hint="t('spreed', 'Loading')" />
 						<Hint v-else :hint="t('spreed', 'No search results')" />
@@ -79,7 +79,7 @@
 				</template>
 				<template v-if="showStartConversationsOptions">
 					<template v-if="searchResultsGroups.length !== 0">
-						<Caption
+						<AppNavigationCaption
 							:title="t('spreed', 'Groups')" />
 						<li v-if="searchResultsGroups.length !== 0" role="presentation">
 							<ConversationsOptionsList
@@ -89,7 +89,7 @@
 					</template>
 
 					<template v-if="searchResultsCircles.length !== 0">
-						<Caption
+						<AppNavigationCaption
 							:title="t('spreed', 'Circles')" />
 						<li v-if="searchResultsCircles.length !== 0" role="presentation">
 							<ConversationsOptionsList
@@ -98,7 +98,7 @@
 						</li>
 					</template>
 
-					<Caption v-if="sourcesWithoutResults"
+					<AppNavigationCaption v-if="sourcesWithoutResults"
 						:title="sourcesWithoutResultsList" />
 					<Hint v-if="contactsLoading" :hint="t('spreed', 'Loading')" />
 					<Hint v-else :hint="t('spreed', 'No search results')" />
@@ -121,7 +121,7 @@
 <script>
 import CancelableRequest from '../../utils/cancelableRequest'
 import AppNavigation from '@nextcloud/vue/dist/Components/AppNavigation'
-import Caption from '../Caption'
+import AppNavigationCaption from '@nextcloud/vue/dist/Components/AppNavigationCaption'
 import ConversationsList from './ConversationsList/ConversationsList'
 import Conversation from './ConversationsList/Conversation'
 import ConversationsOptionsList from '../ConversationsOptionsList'
@@ -130,8 +130,6 @@ import SearchBox from './SearchBox/SearchBox'
 import debounce from 'debounce'
 import { EventBus } from '../../services/EventBus'
 import {
-	createOneToOneConversation,
-	fetchConversations,
 	searchPossibleConversations,
 	searchListedConversations,
 } from '../../services/conversationsService'
@@ -148,7 +146,7 @@ export default {
 
 	components: {
 		AppNavigation,
-		Caption,
+		AppNavigationCaption,
 		ConversationsList,
 		ConversationsOptionsList,
 		Hint,
@@ -176,8 +174,9 @@ export default {
 			initialisedConversations: false,
 			cancelSearchPossibleConversations: () => {},
 			cancelSearchListedConversations: () => {},
-			// Keeps track of wheteher the conversation list is scrolled to the top or not
+			// Keeps track of whether the conversation list is scrolled to the top or not
 			isScrolledToTop: true,
+			refreshTimer: null,
 		}
 	},
 
@@ -190,6 +189,8 @@ export default {
 				conversations = conversations.filter(conversation => conversation.displayName.toLowerCase().indexOf(lowerSearchText) !== -1 || conversation.name.toLowerCase().indexOf(lowerSearchText) !== -1)
 			}
 
+			// FIXME: this modifies the original array,
+			// maybe should act on a copy or sort already within the store ?
 			return conversations.sort(this.sortConversations)
 		},
 
@@ -252,25 +253,30 @@ export default {
 
 	mounted() {
 		/** Refreshes the conversations every 30 seconds */
-		window.setInterval(() => {
+		this.refreshTimer = window.setInterval(() => {
 			if (!this.isFetchingConversations) {
 				this.fetchConversations()
 			}
 		}, 30000)
 
-		EventBus.$on('shouldRefreshConversations', this.debounceFetchConversations)
+		EventBus.$on('should-refresh-conversations', this.debounceFetchConversations)
 
 		this.mountArrowNavigation()
 	},
 
 	beforeDestroy() {
-		EventBus.$off('shouldRefreshConversations', this.debounceFetchConversations)
+		EventBus.$off('should-refresh-conversations', this.debounceFetchConversations)
 
 		this.cancelSearchPossibleConversations()
 		this.cancelSearchPossibleConversations = null
 
 		this.cancelSearchListedConversations()
 		this.cancelSearchListedConversations = null
+
+		if (this.refreshTimer) {
+			clearInterval(this.refreshTimer)
+			this.refreshTimer = null
+		}
 	},
 
 	methods: {
@@ -294,6 +300,7 @@ export default {
 			this.contactsLoading = true
 
 			try {
+				// FIXME: move to conversationsStore
 				this.cancelSearchPossibleConversations('canceled')
 				const { request, cancel } = CancelableRequest(searchPossibleConversations)
 				this.cancelSearchPossibleConversations = cancel
@@ -326,6 +333,7 @@ export default {
 			try {
 				this.listedConversationsLoading = true
 
+				// FIXME: move to conversationsStore
 				this.cancelSearchListedConversations('canceled')
 				const { request, cancel } = CancelableRequest(searchListedConversations)
 				this.cancelSearchListedConversations = cancel
@@ -344,41 +352,35 @@ export default {
 
 		async fetchSearchResults() {
 			await Promise.all([this.fetchPossibleConversations(), this.fetchListedConversations()])
-
-			// If none already focused, focus the first rendered result
-			this.focusInitialise()
 		},
 
 		/**
 		 * Create a new conversation with the selected user
 		 * or bring up the dialog to create a new group/circle conversation
 		 *
-		 * @param {Object} item The autocomplete suggestion to start a conversation with
+		 * @param {object} item The autocomplete suggestion to start a conversation with
 		 * @param {string} item.id The ID of the target
 		 * @param {string} item.label The displayname of the target
 		 * @param {string} item.source The source of the target (e.g. users, groups, circle)
 		 */
 		async createAndJoinConversation(item) {
-			let response
 			if (item.source === 'users') {
 				// Create one-to-one conversation directly
-				response = await createOneToOneConversation(item.id)
-				const conversation = response.data.ocs.data
+				const conversation = await this.$store.dispatch('createOneToOneConversation', item.id)
 				this.abortSearch()
-				EventBus.$once('joinedConversation', ({ token }) => {
+				EventBus.$once('joined-conversation', ({ token }) => {
 					this.$refs.conversationsList.scrollToConversation(token)
 				})
-				this.$store.dispatch('addConversation', conversation)
 				this.$router.push({ name: 'conversation', params: { token: conversation.token } }).catch(err => console.debug(`Error while pushing the new conversation's route: ${err}`))
 			} else {
 				// For other types we start the conversation creation dialog
-				EventBus.$emit('NewGroupConversationDialog', item)
+				EventBus.$emit('new-group-conversation-dialog', item)
 			}
 		},
 
 		async joinListedConversation(conversation) {
 			this.abortSearch()
-			EventBus.$once('joinedConversation', ({ token }) => {
+			EventBus.$once('joined-conversation', ({ token }) => {
 				this.$refs.conversationsList.scrollToConversation(token)
 			})
 			// add as temporary item that will refresh after the joining process is complete
@@ -402,12 +404,13 @@ export default {
 		},
 
 		showSettings() {
+			// FIXME: use local EventBus service instead of the global one
 			emit('show-settings')
 		},
 
 		handleClickSearchResult(selectedConversationToken) {
 			if (this.searchText !== '') {
-				EventBus.$once('joinedConversation', ({ token }) => {
+				EventBus.$once('joined-conversation', ({ token }) => {
 					this.$refs.conversationsList.scrollToConversation(token)
 				})
 			}
@@ -437,17 +440,13 @@ export default {
 			 * to the store.
 			 */
 			try {
-				const conversations = await fetchConversations()
+				await this.$store.dispatch('fetchConversations')
 				this.initialisedConversations = true
-				this.$store.dispatch('purgeConversationsStore')
-				conversations.data.ocs.data.forEach(conversation => {
-					this.$store.dispatch('addConversation', conversation)
-				})
 				/**
 				 * Emits a global event that is used in App.vue to update the page title once the
 				 * ( if the current route is a conversation and once the conversations are received)
 				 */
-				EventBus.$emit('conversationsReceived', {
+				EventBus.$emit('conversations-received', {
 					singleConversation: false,
 				})
 				this.isFetchingConversations = false
@@ -475,7 +474,7 @@ export default {
 
 .new-conversation {
 	display: flex;
-	padding: 8px;
+	padding: 8px 0;
 	&--scrolled-down {
 		border-bottom: 1px solid var(--color-border);
 	}
@@ -487,6 +486,7 @@ export default {
 	width: 100% !important;
 	overflow-y: auto !important;
 	overflow-x: hidden !important;
+	padding: 0 4px;
 }
 
 </style>

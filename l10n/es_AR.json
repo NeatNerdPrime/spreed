@@ -62,7 +62,6 @@
     "Conversation name" : "Nombre de conversación",
     "Camera" : "Cámara",
     "Reply" : "Responder",
-    "Remove" : "Borrar",
     "Today" : "Hoy",
     "Yesterday" : "Ayer",
     "Send message" : "Enviar mensaje",
@@ -91,7 +90,8 @@
     "UDP and TCP" : "UDP y TCP",
     "UDP only" : "sólo UDP",
     "TCP only" : "sólo TCP",
-    "Share link" : "Compartir link",
-    "Enabled" : "Habilitado"
+    "Remove" : "Borrar",
+    "Enabled" : "Habilitado",
+    "Share link" : "Compartir link"
 },"pluralForm" :"nplurals=2; plural=(n != 1);"
 }

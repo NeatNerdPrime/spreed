@@ -68,7 +68,7 @@ export default {
 		/**
 		 * Gets the participants array.
 		 *
-		 * @returns {array}
+		 * @return {Array}
 		 */
 		participantsList() {
 			let participants = this.$store.getters.participantsList(this.token)
@@ -134,9 +134,17 @@ export default {
 		 * @param {string} participant2.actorType Second participant actor type
 		 * @param {string} participant2.status Second participant user status
 		 * @param {int} participant2.inCall Second participant in call flag
-		 * @returns {number}
+		 * @return {number}
 		 */
 		sortParticipants(participant1, participant2) {
+			const p1IsCircle = participant1.actorType === ATTENDEE.ACTOR_TYPE.CIRCLES
+			const p2IsCircle = participant2.actorType === ATTENDEE.ACTOR_TYPE.CIRCLES
+
+			if (p1IsCircle !== p2IsCircle) {
+				// Circles below participants and groups
+				return p2IsCircle ? -1 : 1
+			}
+
 			const p1IsGroup = participant1.actorType === ATTENDEE.ACTOR_TYPE.GROUPS
 			const p2IsGroup = participant2.actorType === ATTENDEE.ACTOR_TYPE.GROUPS
 
@@ -145,14 +153,19 @@ export default {
 				return p2IsGroup ? -1 : 1
 			}
 
-			let hasSessions1 = !!participant1.sessionIds.length
-			let hasSessions2 = !!participant2.sessionIds.length
+			const hasSessions1 = !!participant1.sessionIds.length
+			const hasSessions2 = !!participant2.sessionIds.length
+			/**
+			 * For now the user status is not overwriting the online-offline status anymore
+			 * It felt too weird having users appear as offline but they are in the call or chat actively
 			if (participant1.status === 'offline') {
 				hasSessions1 = false
 			}
 			if (participant2.status === 'offline') {
 				hasSessions2 = false
 			}
+			 */
+
 			if (!hasSessions1) {
 				if (hasSessions2) {
 					return 1

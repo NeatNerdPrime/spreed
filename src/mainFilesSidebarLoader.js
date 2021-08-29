@@ -3,7 +3,7 @@
  *
  * @author Marco Ambrosini <marcoambrosini@pm.me>
  *
- * @license GNU AGPL version 3 or any later version
+ * @license AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -21,7 +21,6 @@
  */
 
 import FilesSidebarCallView from './views/FilesSidebarCallView'
-import { leaveConversation } from './services/participantsService'
 import './init'
 
 const isEnabled = function(fileInfo) {
@@ -35,7 +34,7 @@ const isEnabled = function(fileInfo) {
 	// left; this must be done here because "setFileInfo" will not get
 	// called with the new file if the tab can not be displayed.
 	if (token) {
-		leaveConversation(token)
+		OCA.Talk.store.dispatch('leaveConversation', { token })
 	}
 
 	OCA.Talk.store.dispatch('updateTokenAndFileIdForToken', {

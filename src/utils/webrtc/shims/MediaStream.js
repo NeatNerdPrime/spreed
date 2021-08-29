@@ -2,7 +2,7 @@
  *
  * @copyright Copyright (c) 2020, Daniel Calviño Sánchez (danxuliu@gmail.com)
  *
- * @license GNU AGPL version 3 or any later version
+ * @license AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -33,7 +33,7 @@ if (window.MediaStream) {
 		this.removeEventListener('addtrack', testAddTrackEvent)
 
 		if (!addTrackEventDispatched) {
-			this.dispatchEvent(new MediaStreamTrackEvent('addtrack', { track: track }))
+			this.dispatchEvent(new MediaStreamTrackEvent('addtrack', { track }))
 		}
 	}
 
@@ -50,7 +50,7 @@ if (window.MediaStream) {
 		this.removeEventListener('removetrack', testRemoveTrackEvent)
 
 		if (!removeTrackEventDispatched) {
-			this.dispatchEvent(new MediaStreamTrackEvent('removetrack', { track: track }))
+			this.dispatchEvent(new MediaStreamTrackEvent('removetrack', { track }))
 		}
 	}
 
@@ -90,7 +90,7 @@ if (window.MediaStream) {
 				this._listeners = []
 			}
 
-			if (!this._listeners.hasOwnProperty(type)) {
+			if (!Object.prototype.hasOwnProperty.call(this._listeners, type)) {
 				this._listeners[type] = [listener]
 			} else if (!this._listeners[type].includes(listener)) {
 				this._listeners[type].push(listener)

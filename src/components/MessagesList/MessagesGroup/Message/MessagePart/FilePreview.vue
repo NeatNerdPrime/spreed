@@ -26,13 +26,13 @@
 		:tabindex="wrapperTabIndex"
 		class="file-preview"
 		:class="{ 'file-preview--viewer-available': isViewerAvailable, 'file-preview--upload-editor': isUploadEditor }"
-		@click="handleClick"
+		@click.exact="handleClick"
 		@keydown.enter="handleClick">
 		<div
 			v-if="!isLoading"
 			class="image-container"
 			:class="{'playable': isPlayable}">
-			<span v-if="isPlayable" class="play-video-button">
+			<span v-if="isPlayable && !smallPreview" class="play-video-button">
 				<PlayCircleOutline
 					:size="48"
 					decorative
@@ -65,7 +65,7 @@
 		</button>
 		<ProgressBar v-if="isTemporaryUpload && !isUploadEditor" :value="uploadProgress" />
 		<div class="name-container">
-			<strong v-if="shouldShowFileName">{{ name }}</strong>
+			<strong v-if="shouldShowFileDetail">{{ fileDetail }}</strong>
 		</div>
 	</file-preview>
 </template>
@@ -77,6 +77,8 @@ import Tooltip from '@nextcloud/vue/dist/Directives/Tooltip'
 import Close from 'vue-material-design-icons/Close'
 import PlayCircleOutline from 'vue-material-design-icons/PlayCircleOutline'
 import { getCapabilities } from '@nextcloud/capabilities'
+import { encodePath } from '@nextcloud/paths'
+import AudioPlayer from './AudioPlayer'
 
 const PREVIEW_TYPE = {
 	TEMPORARY: 0,
@@ -99,38 +101,59 @@ export default {
 	},
 
 	props: {
-		type: {
-			type: String,
-			required: true,
-		},
+		/**
+		 * File id
+		 */
 		id: {
 			type: String,
 			required: true,
 		},
+		/**
+		 * File name
+		 */
 		name: {
 			type: String,
 			required: true,
 		},
+		/**
+		 * File path relative to the user's home storage,
+		 * or link share root, includes the file name.
+		 */
 		path: {
 			type: String,
 			default: '',
 		},
+		/**
+		 * File size in bytes
+		 */
 		size: {
 			type: Number,
 			default: -1,
 		},
+		/**
+		 * Download link
+		 */
 		link: {
 			type: String,
 			default: '',
 		},
+		/**
+		 * Mime type
+		 */
 		mimetype: {
 			type: String,
 			default: '',
 		},
+		/**
+		 * Whether a preview is available, string "yes" for yes
+		 * otherwise the string "no"
+		 */
+		// FIXME: use booleans here
 		previewAvailable: {
 			type: String,
 			default: 'no',
 		},
+
 		/**
 		 * Whether to render a small preview to embed in replies
 		 */
@@ -138,28 +161,46 @@ export default {
 			type: Boolean,
 			default: false,
 		},
-		// In case this component is used to display a file that is being uploaded
-		// this parameter is used to access the file upload status in the store
+		/**
+		 * Upload id from the file upload store.
+		 *
+		 * In case this component is used to display a file that is being uploaded
+		 * this parameter is used to access the file upload status in the store
+		 */
 		uploadId: {
 			type: Number,
 			default: null,
 		},
-		// In case this component is used to display a file that is being uploaded
-		// this parameter is used to access the file upload status in the store
+		/**
+		 * File upload index from the file upload store.
+		 *
+		 * In case this component is used to display a file that is being uploaded
+		 * this parameter is used to access the file upload status in the store
+		 */
 		index: {
 			type: String,
 			default: '',
 		},
-		// True if this component is used in the upload editor
+		/**
+		 * Whether the container is the upload editor.
+		 * True if this component is used in the upload editor.
+		 */
 		// FIXME: file-preview should be encapsulated and not be aware of its surroundings
 		isUploadEditor: {
 			type: Boolean,
 			default: false,
 		},
-		// The link to the file for displaying it in the preview
+		/**
+		 * The link to the file for displaying it in the preview
+		 */
 		localUrl: {
 			type: String,
 			default: '',
+		},
+
+		isVoiceMessage: {
+			type: Boolean,
+			default: false,
 		},
 	},
 	data() {
@@ -169,8 +210,8 @@ export default {
 		}
 	},
 	computed: {
-		shouldShowFileName() {
-			// display the file name below the preview if the preview
+		shouldShowFileDetail() {
+			// display the file detail below the preview if the preview
 			// is not easily recognizable, when:
 			return (
 				// the file is not an image
@@ -183,8 +224,13 @@ export default {
 				|| this.isUploadEditor
 			)
 		},
+
+		fileDetail() {
+			return this.name
+		},
+
 		previewTooltip() {
-			if (this.shouldShowFileName) {
+			if (this.shouldShowFileDetail) {
 				// no tooltip as the file name is already visible directly
 				return null
 			}
@@ -194,6 +240,7 @@ export default {
 				placement: 'left',
 			}
 		},
+
 		// This is used to decide which outer element type to use
 		// a or div
 		filePreview() {
@@ -201,6 +248,13 @@ export default {
 				return {
 					is: 'div',
 					tag: 'div',
+				}
+			} else if (this.isVoiceMessage) {
+				return {
+					is: AudioPlayer,
+					name: this.name,
+					path: this.path,
+					link: this.link,
 				}
 			}
 			return {
@@ -211,9 +265,11 @@ export default {
 				rel: 'noopener noreferrer',
 			}
 		},
+
 		defaultIconUrl() {
 			return imagePath('core', 'filetypes/file')
 		},
+
 		previewImageClass() {
 			let classes = ''
 			if (this.smallPreview) {
@@ -227,6 +283,7 @@ export default {
 			}
 			return classes
 		},
+
 		previewType() {
 			if (this.hasTemporaryImageUrl) {
 				return PREVIEW_TYPE.TEMPORARY
@@ -242,6 +299,7 @@ export default {
 
 			return PREVIEW_TYPE.PREVIEW
 		},
+
 		previewUrl() {
 			const userId = this.$store.getters.getUserId()
 
@@ -256,10 +314,10 @@ export default {
 				// return direct image
 				if (userId === null) {
 					// guest mode, use public link download URL
-					return this.link + '/download/' + this.name
+					return this.link + '/download/' + encodePath(this.name)
 				} else {
 					// use direct DAV URL
-					return generateRemoteUrl(`dav/files/${userId}`) + this.internalAbsolutePath
+					return generateRemoteUrl(`dav/files/${userId}`) + encodePath(this.internalAbsolutePath)
 				}
 			}
 
@@ -274,7 +332,7 @@ export default {
 				// FIXME: use a cleaner way...
 				const token = this.link.substr(this.link.lastIndexOf('/') + 1)
 				return generateUrl('/apps/files_sharing/publicpreview/{token}?x=-1&y={height}&a=1', {
-					token: token,
+					token,
 					height: previewSize,
 				})
 			} else {
@@ -284,6 +342,7 @@ export default {
 				})
 			}
 		},
+
 		isViewerAvailable() {
 			if (!OCA.Viewer) {
 				return false
@@ -298,6 +357,7 @@ export default {
 
 			return false
 		},
+
 		isPlayable() {
 			// don't show play button for direct renders
 			if (this.failed || !this.isViewerAvailable || this.previewType !== PREVIEW_TYPE.PREVIEW) {
@@ -307,6 +367,7 @@ export default {
 			// videos only display a preview, so always show a button if playable
 			return this.mimetype === 'image/gif' || this.mimetype.startsWith('video/')
 		},
+
 		internalAbsolutePath() {
 			if (this.path.startsWith('/')) {
 				return this.path
@@ -314,17 +375,21 @@ export default {
 
 			return '/' + this.path
 		},
+
 		isTemporaryUpload() {
 			return this.id.startsWith('temp') && this.index && this.uploadId
 		},
+
 		uploadProgress() {
 			if (this.isTemporaryUpload) {
 				if (this.$store.getters.uploadProgress(this.uploadId, this.index)) {
 					return this.$store.getters.uploadProgress(this.uploadId, this.index)
 				}
 			}
+			// likely never reached
 			return 0
 		},
+
 		hasTemporaryImageUrl() {
 			return this.mimetype.startsWith('image/') && this.localUrl
 		},
@@ -334,9 +399,10 @@ export default {
 		},
 
 		removeAriaLabel() {
-			return t('spreed', 'Remove' + this.name)
+			return t('spreed', 'Remove {fileName}', { fileName: this.name })
 		},
 	},
+
 	mounted() {
 		const img = new Image()
 		img.onerror = () => {
@@ -348,6 +414,7 @@ export default {
 		}
 		img.src = this.previewUrl
 	},
+
 	methods: {
 		handleClick(event) {
 			if (this.isUploadEditor) {

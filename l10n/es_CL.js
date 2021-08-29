@@ -88,7 +88,6 @@ OC.L10N.register(
     "Close" : "Cerrar",
     "Conversation name" : "Nombre de la conversación",
     "Reply" : "Responder",
-    "Remove" : "Eliminar",
     "Today" : "Hoy",
     "Yesterday" : "Ayer",
     "{relativeDate}, {absoluteDate}" : "{relativeDate}, {absoluteDate}",
@@ -127,9 +126,10 @@ OC.L10N.register(
     "Unmute audio (m)" : "Habilitar audio (m)",
     "Disable video (v)" : "Deshabilitar video (v)",
     "Enable video (v)" : "Habilitar video (v)",
+    "Remove" : "Eliminar",
+    "Enabled" : "Habilitado",
     "Share link" : "Compartir liga",
     "Exit fullscreen (f)" : "Salir de pantalla completa (f)",
-    "Fullscreen (f)" : "Pantalla completa (f)",
-    "Enabled" : "Habilitado"
+    "Fullscreen (f)" : "Pantalla completa (f)"
 },
 "nplurals=2; plural=(n != 1);");

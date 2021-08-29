@@ -23,12 +23,17 @@ declare(strict_types=1);
 
 namespace OCA\Talk\Model;
 
+use OCP\AppFramework\Db\DoesNotExistException;
+use OCP\AppFramework\Db\MultipleObjectsReturnedException;
 use OCP\AppFramework\Db\QBMapper;
+use OCP\DB\Exception as DBException;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 
 /**
  * @method Attendee mapRowToEntity(array $row)
+ * @method Attendee findEntity(IQueryBuilder $query)
+ * @method Attendee[] findEntities(IQueryBuilder $query)
  */
 class AttendeeMapper extends QBMapper {
 
@@ -44,7 +49,7 @@ class AttendeeMapper extends QBMapper {
 	 * @param string $actorType
 	 * @param string $actorId
 	 * @return Attendee
-	 * @throws \OCP\AppFramework\Db\DoesNotExistException
+	 * @throws DoesNotExistException
 	 */
 	public function findByActor(int $roomId, string $actorType, string $actorId): Attendee {
 		$query = $this->db->getQueryBuilder();
@@ -53,6 +58,22 @@ class AttendeeMapper extends QBMapper {
 			->where($query->expr()->eq('actor_type', $query->createNamedParameter($actorType)))
 			->andWhere($query->expr()->eq('actor_id', $query->createNamedParameter($actorId)))
 			->andWhere($query->expr()->eq('room_id', $query->createNamedParameter($roomId)));
+
+		return $this->findEntity($query);
+	}
+
+	/**
+	 * @param int $id
+	 * @return Attendee
+	 * @throws DoesNotExistException
+	 * @throws MultipleObjectsReturnedException
+	 * @throws DBException
+	 */
+	public function getById(int $id): Attendee {
+		$query = $this->db->getQueryBuilder();
+		$query->select('*')
+			->from($this->getTableName())
+			->where($query->expr()->eq('id', $query->createNamedParameter($id)));
 
 		return $this->findEntity($query);
 	}
@@ -110,9 +131,11 @@ class AttendeeMapper extends QBMapper {
 		$query = $this->db->getQueryBuilder();
 		$query->select($query->func()->count('*', 'num_actors'))
 			->from($this->getTableName())
-			->where($query->expr()->eq('room_id', $query->createNamedParameter($roomId, IQueryBuilder::PARAM_INT)));
-
-		// TODO Should exclude groups and circles when we add them
+			->where($query->expr()->eq('room_id', $query->createNamedParameter($roomId, IQueryBuilder::PARAM_INT)))
+			->andWhere($query->expr()->notIn('actor_type', $query->createNamedParameter([
+				Attendee::ACTOR_CIRCLES,
+				Attendee::ACTOR_GROUPS,
+			], IQueryBuilder::PARAM_STR_ARRAY)));
 
 		if (!empty($participantType)) {
 			$query->andWhere($query->expr()->in('participant_type', $query->createNamedParameter($participantType, IQueryBuilder::PARAM_INT_ARRAY)));
@@ -152,6 +175,9 @@ class AttendeeMapper extends QBMapper {
 			'last_read_message' => (int) $row['last_read_message'],
 			'last_mention_message' => (int) $row['last_mention_message'],
 			'read_privacy' => (int) $row['read_privacy'],
+			'publishing_permissions' => (int) $row['publishing_permissions'],
+			'access_token' => (string) $row['access_token'],
+			'remote_id' => (string) $row['remote_id'],
 		]);
 	}
 }

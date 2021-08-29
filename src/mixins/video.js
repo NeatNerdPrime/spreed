@@ -3,7 +3,7 @@
  *
  * @author Marco Ambrosini <marcoambrosini@pm.me>
  *
- * @license GNU AGPL version 3 or any later version
+ * @license AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -67,6 +67,10 @@ const video = {
 		handleClickVideo(e) {
 			// Prevent clicks on the media controls buttons to trigger a video selection
 			if (e.target.localName === 'button') {
+				return
+			}
+			// Prevent clicks on the "settings icon" of the popover/actions menu to trigger a video selection
+			if (e.target.localName === 'svg') {
 				return
 			}
 			this.$emit('click-video')

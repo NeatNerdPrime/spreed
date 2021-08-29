@@ -8,7 +8,7 @@
 
 * 💬 **Chat integration!** Nextcloud Talk comes with a simple text chat. Allowing you to share files from your Nextcloud and mentioning other participants.
 * 👥 **Private, group, public and password protected calls!** Just invite somebody, a whole group or send a public link to invite to a call.
-* 💻 **Screen sharing!** Share your screen with participants of your call. You just need to use Firefox version 52 (or newer), latest Edge or Chrome 49 (or newer) with this [Chrome extension](https://chrome.google.com/webstore/detail/screensharing-for-nextclo/kepnpjhambipllfmgmbapncekcmabkol).
+* 💻 **Screen sharing!** Share your screen with participants of your call. You just need to use Firefox version 66 (or newer), latest Edge or Chrome 72 (or newer, also possible using Chrome 49 with this [Chrome extension](https://chrome.google.com/webstore/detail/screensharing-for-nextclo/kepnpjhambipllfmgmbapncekcmabkol)).
 * 🚀 **Integration with other Nextcloud apps** like Files, Contacts and Deck. More to come.
 
 And in the works for the [coming versions](https://github.com/nextcloud/spreed/milestones/):
@@ -16,7 +16,7 @@ And in the works for the [coming versions](https://github.com/nextcloud/spreed/m
 
 	]]></description>
 
-	<version>12.0.0-dev.6</version>
+	<version>13.0.0-dev.1</version>
 	<licence>agpl</licence>
 
 	<author>Daniel Calviño Sánchez</author>
@@ -49,7 +49,7 @@ And in the works for the [coming versions](https://github.com/nextcloud/spreed/m
 	<screenshot>https://raw.githubusercontent.com/nextcloud/spreed/master/docs/video-verfication.png</screenshot>
 
 	<dependencies>
-		<nextcloud min-version="22" max-version="22" />
+		<nextcloud min-version="23" max-version="23" />
 	</dependencies>
 
 	<background-jobs>

@@ -29,7 +29,7 @@
 		:tab-select="true"
 		:allow-spaces="false"
 		@at="handleAtEvent">
-		<template v-slot:item="scope">
+		<template #item="scope">
 			<Avatar v-if="isMentionToAll(scope.item.id)"
 				:size="44"
 				:icon-class="'icon-group-forced-white'"
@@ -57,7 +57,7 @@
 				</em>
 			</span>
 		</template>
-		<template v-slot:embeddedItem="scope">
+		<template #embeddedItem="scope">
 			<!-- The root element itself is ignored, only its contents are taken
 			     into account. -->
 			<span>
@@ -107,7 +107,7 @@ import debounce from 'debounce'
  * vue-at component or not.
  *
  * @param {CSSStyleSheet} sheet the style sheet to check.
- * @returns {Boolean} True if it is the style sheet from vue-at, false
+ * @return {boolean} True if it is the style sheet from vue-at, false
  *          otherwise.
  */
 function isDefaultAtWhoStyleSheet(sheet) {
@@ -207,7 +207,7 @@ export default {
 			required: true,
 		},
 	},
-	data: function() {
+	data() {
 		return {
 			text: '',
 			autoCompleteMentionCandidates: [],
@@ -235,20 +235,20 @@ export default {
 			}
 		},
 	},
+
 	mounted() {
-		this.focusInput()
 		/**
 		 * Listen to routeChange global events and focus on the
 		 */
-		EventBus.$on('routeChange', this.focusInput)
-		EventBus.$on('focusChatInput', this.focusInput)
+		EventBus.$on('focus-chat-input', this.focusInput)
 
 		this.atWhoPanelExtraClasses = 'talk candidate-mentions'
 	},
+
 	beforeDestroy() {
-		EventBus.$off('routeChange', this.focusInput)
-		EventBus.$off('focusChatInput', this.focusInput)
+		EventBus.$off('focus-chat-input', this.focusInput)
 	},
+
 	methods: {
 		onBlur() {
 			// requires a short delay to avoid blocking click event handlers
@@ -281,7 +281,8 @@ export default {
 		 * The vue-at library only searches in the display name by default.
 		 * But luckily our server responds already only with matching items,
 		 * so we just filter none and show them all.
-		 * @returns {boolean} True as we never filter anything out
+		 *
+		 * @return {boolean} True as we never filter anything out
 		 */
 		atFilter() {
 			return true
@@ -321,6 +322,12 @@ export default {
 				return
 			}
 
+			// If the user is stil composing by an input method,
+			// we should not submit the message
+			if (event.isComposing) {
+				return
+			}
+
 			// TODO: add support for CTRL+ENTER new line
 			if (!(event.shiftKey)) {
 				event.preventDefault()
@@ -341,7 +348,7 @@ export default {
 		 * Sets the autocomplete mention candidates based on the matched text
 		 * after the "@".
 		 *
-		 * @param {String} chunk the matched text to look candidate mentions for.
+		 * @param {string} chunk the matched text to look candidate mentions for.
 		 */
 		handleAtEvent: debounce(function(chunk) {
 			this.queryPossibleMentions(chunk)
@@ -373,8 +380,8 @@ export default {
 
 		getGuestAvatarStyle() {
 			return {
-				'width': '44px',
-				'height': '44px',
+				width: '44px',
+				height: '44px',
 				'line-height': '44px',
 				'background-color': '#b9b9b9',
 				'text-align': 'center',
@@ -400,6 +407,8 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+@use 'sass:math';
+
 @import '../../../assets/variables';
 
 .atwho-wrapper {
@@ -410,10 +419,10 @@ export default {
 	overflow: visible;
 	width: 100%;
 	border:none;
-	margin: 0 6px !important;
+	margin: 0 4px !important;
 	word-break: break-word;
 	white-space: pre-wrap;
-	padding: 8px 16px;
+	padding: 8px 16px 8px 48px;
 }
 
 // Support for the placeholder text in the div contenteditable
@@ -421,8 +430,10 @@ div[contenteditable] {
 	font-size: $chat-font-size;
 	line-height: $chat-line-height;
 	min-height: $clickable-area;
-	border-radius: $clickable-area / 2;
+	border-radius: math.div($clickable-area, 2);
 	border: 1px solid var(--color-border-dark);
+	max-height: 180px;
+	overflow-y: auto;
 	&:hover,
 	&:focus,
 	&:active {

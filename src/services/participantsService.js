@@ -3,7 +3,7 @@
  *
  * @author Marco Ambrosini <marcoambrosini@pm.me>
  *
- * @license GNU AGPL version 3 or any later version
+ * @license AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -22,107 +22,30 @@
 
 import axios from '@nextcloud/axios'
 import {
-	generateUrl,
 	generateOcsUrl,
 } from '@nextcloud/router'
-import { showError } from '@nextcloud/dialogs'
 import {
 	signalingJoinConversation,
 	signalingLeaveConversation,
 } from '../utils/webrtc/index'
-import { EventBus } from './EventBus'
-import SessionStorage from './SessionStorage'
-import { PARTICIPANT } from '../constants'
-import store from '../store/index'
 
 /**
  * Joins the current user to a conversation specified with
  * the token.
  *
  * @param {string} token The conversation token;
+ * @param {options} options request options;
+ * @param {bool} forceJoin whether to force join;
  */
-const joinConversation = async(token) => {
-	// When the token is in the last joined conversation, the user is reloading or force joining
-	const forceJoin = SessionStorage.getItem('joined_conversation') === token
+const joinConversation = async ({ token, forceJoin = false }, options) => {
+	const response = await axios.post(generateOcsUrl('apps/spreed/api/v4/room/{token}/participants/active', { token }), {
+		force: forceJoin,
+	}, options)
 
-	try {
-		const response = await axios.post(generateOcsUrl('apps/spreed/api/v4', 2) + `room/${token}/participants/active`, {
-			force: forceJoin,
-		})
+	// FIXME Signaling should not be synchronous
+	await signalingJoinConversation(token, response.data.ocs.data.sessionId)
 
-		// Update the participant and actor session after a force join
-		store.dispatch('setCurrentParticipant', response.data.ocs.data)
-		store.dispatch('addConversation', response.data.ocs.data)
-		store.dispatch('updateSessionId', {
-			token: token,
-			participantIdentifier: store.getters.getParticipantIdentifier(),
-			sessionId: response.data.ocs.data.sessionId,
-		})
-
-		// FIXME Signaling should not be synchronous
-		await signalingJoinConversation(token, response.data.ocs.data.sessionId)
-		SessionStorage.setItem('joined_conversation', token)
-		EventBus.$emit('joinedConversation', { token })
-		return response
-	} catch (error) {
-		if (error?.response?.status === 409 && error?.response?.data?.ocs?.data) {
-			const responseData = error.response.data.ocs.data
-			let maxLastPingAge = new Date().getTime() / 1000 - 40
-			if (responseData.inCall !== PARTICIPANT.CALL_FLAG.DISCONNECTED) {
-				// When the user is/was in a call, we accept 20 seconds more delay
-				maxLastPingAge -= 20
-			}
-			if (maxLastPingAge > responseData.lastPing) {
-				console.debug('Force joining automatically because the old session didn\'t ping for 40 seconds')
-				await forceJoinConversation(token)
-			} else {
-				await confirmForceJoinConversation(token)
-			}
-		} else {
-			console.debug(error)
-			showError(t('spreed', 'Failed to join the conversation. Try to reload the page.'))
-		}
-	}
-}
-
-const confirmForceJoinConversation = async(token) => {
-	// Little hack to check if the close button was used which we can't disable,
-	// not listen to when it was used.
-	const interval = setInterval(function() {
-		// eslint-disable-next-line no-undef
-		if ($('.oc-dialog-dim').length === 0) {
-			clearInterval(interval)
-			EventBus.$emit('duplicateSessionDetected')
-			window.location = generateUrl('/apps/spreed')
-		}
-	}, 3000)
-
-	await OC.dialogs.confirmDestructive(
-		t('spreed', 'You are trying to join a conversation while having an active session in another window or device. This is currently not supported by Nextcloud Talk. What do you want to do?'),
-		t('spreed', 'Duplicate session'),
-		{
-			type: OC.dialogs.YES_NO_BUTTONS,
-			confirm: t('spreed', 'Join here'),
-			confirmClasses: 'error',
-			cancel: t('spreed', 'Leave this page'),
-		},
-		decision => {
-			clearInterval(interval)
-			if (!decision) {
-				// Cancel
-				EventBus.$emit('duplicateSessionDetected')
-				window.location = generateUrl('/apps/spreed')
-			} else {
-				// Confirm
-				forceJoinConversation(token)
-			}
-		}
-	)
-}
-
-const forceJoinConversation = async(token) => {
-	SessionStorage.setItem('joined_conversation', token)
-	await joinConversation(token)
+	return response
 }
 
 /**
@@ -131,8 +54,8 @@ const forceJoinConversation = async(token) => {
  *
  * @param {string} token The conversation token;
  */
-const rejoinConversation = async(token) => {
-	return axios.post(generateOcsUrl('apps/spreed/api/v4', 2) + `room/${token}/participants/active`)
+const rejoinConversation = async (token) => {
+	return axios.post(generateOcsUrl('apps/spreed/api/v4/room/{token}/participants/active', { token }))
 }
 
 /**
@@ -145,10 +68,11 @@ const leaveConversation = async function(token) {
 		// FIXME Signaling should not be synchronous
 		await signalingLeaveConversation(token)
 
-		const response = await axios.delete(generateOcsUrl('apps/spreed/api/v4', 2) + `room/${token}/participants/active`)
+		const response = await axios.delete(generateOcsUrl('apps/spreed/api/v4/room/{token}/participants/active', { token }))
 		return response
 	} catch (error) {
 		console.debug(error)
+		// FIXME: should throw
 	}
 }
 
@@ -158,17 +82,18 @@ const leaveConversation = async function(token) {
  * @param {string} token The conversation token;
  */
 const leaveConversationSync = function(token) {
-	axios.delete(generateOcsUrl('apps/spreed/api/v4', 2) + `room/${token}/participants/active`)
+	axios.delete(generateOcsUrl('apps/spreed/api/v4/room/{token}/participants/active', { token }))
 }
 
 /**
  * Add a participant to a conversation.
+ *
  * @param {token} token the conversation token.
  * @param {string} newParticipant the id of the new participant
  * @param {string} source the source Source of the participant as returned by the autocomplete suggestion endpoint (default is users)
  */
 const addParticipant = async function(token, newParticipant, source) {
-	const response = await axios.post(generateOcsUrl('apps/spreed/api/v4', 2) + `room/${token}/participants`, {
+	const response = await axios.post(generateOcsUrl('apps/spreed/api/v4/room/{token}/participants', { token }), {
 		newParticipant,
 		source,
 	})
@@ -181,12 +106,12 @@ const addParticipant = async function(token, newParticipant, source) {
  * @param {string} token The conversation token;
  */
 const removeCurrentUserFromConversation = async function(token) {
-	const response = await axios.delete(generateOcsUrl('apps/spreed/api/v4', 2) + `room/${token}/participants/self`)
+	const response = await axios.delete(generateOcsUrl('apps/spreed/api/v4/room/{token}/participants/self', { token }))
 	return response
 }
 
 const removeAttendeeFromConversation = async function(token, attendeeId) {
-	const response = await axios.delete(generateOcsUrl('apps/spreed/api/v4', 2) + `room/${token}/attendees`, {
+	const response = await axios.delete(generateOcsUrl('apps/spreed/api/v4/room/{token}/attendees', { token }), {
 		params: {
 			attendeeId,
 		},
@@ -194,28 +119,28 @@ const removeAttendeeFromConversation = async function(token, attendeeId) {
 	return response
 }
 
-const promoteToModerator = async(token, options) => {
-	const response = await axios.post(generateOcsUrl('apps/spreed/api/v4', 2) + `room/${token}/moderators`, options)
+const promoteToModerator = async (token, options) => {
+	const response = await axios.post(generateOcsUrl('apps/spreed/api/v4/room/{token}/moderators', { token }), options)
 	return response
 }
 
-const demoteFromModerator = async(token, options) => {
-	const response = await axios.delete(generateOcsUrl('apps/spreed/api/v4', 2) + `room/${token}/moderators`, {
+const demoteFromModerator = async (token, options) => {
+	const response = await axios.delete(generateOcsUrl('apps/spreed/api/v4/room/{token}/moderators', { token }), {
 		params: options,
 	})
 	return response
 }
 
-const fetchParticipants = async(token, options) => {
+const fetchParticipants = async (token, options) => {
 	options = options || {}
 	options.params = options.params || {}
 	options.params.includeStatus = true
-	const response = await axios.get(generateOcsUrl('apps/spreed/api/v4', 2) + `room/${token}/participants`, options)
+	const response = await axios.get(generateOcsUrl('apps/spreed/api/v4/room/{token}/participants', { token }), options)
 	return response
 }
 
-const setGuestUserName = async(token, userName) => {
-	const response = await axios.post(generateOcsUrl('apps/spreed/api/v1', 2) + `/guest/${token}/name`, {
+const setGuestUserName = async (token, userName) => {
+	const response = await axios.post(generateOcsUrl('apps/spreed/api/v1/guest/{token}/name', { token }), {
 		displayName: userName,
 	})
 	return response
@@ -228,8 +153,8 @@ const setGuestUserName = async(token, userName) => {
  * @param {string} token conversation token
  * @param {int} attendeeId attendee id to target, or null for all
  */
-const resendInvitations = async(token, { attendeeId = null }) => {
-	await axios.post(generateOcsUrl('apps/spreed/api/v4', 2) + `room/${token}/participants/resend-invitations`, {
+const resendInvitations = async (token, { attendeeId = null }) => {
+	await axios.post(generateOcsUrl('apps/spreed/api/v4/room/{token}/participants/resend-invitations', { token }), {
 		attendeeId,
 	})
 }

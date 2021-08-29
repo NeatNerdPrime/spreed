@@ -3,7 +3,7 @@
  *
  * @author Joas Schilling <coding@schilljs.com>
  *
- * @license GNU AGPL version 3 or any later version
+ * @license AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -25,13 +25,21 @@ import {
 	demoteFromModerator,
 	removeAttendeeFromConversation,
 	resendInvitations,
+	joinConversation,
+	leaveConversation,
+	removeCurrentUserFromConversation,
 } from '../services/participantsService'
+import {
+	generateUrl,
+} from '@nextcloud/router'
 import {
 	joinCall,
 	leaveCall,
 } from '../services/callsService'
+import SessionStorage from '../services/SessionStorage'
 import { PARTICIPANT } from '../constants'
 import { EventBus } from '../services/EventBus'
+import { showError } from '@nextcloud/dialogs'
 
 const state = {
 	participants: {
@@ -53,8 +61,9 @@ const getters = {
 	},
 	/**
 	 * Gets the participants array
+	 *
 	 * @param {object} state the state object.
-	 * @returns {array} the participants array (if there are participants in the store)
+	 * @return {Array} the participants array (if there are participants in the store)
 	 */
 	participantsList: (state) => (token) => {
 		if (state.participants[token]) {
@@ -75,9 +84,9 @@ const getters = {
 
 		let index
 
-		if (participantIdentifier.hasOwnProperty('attendeeId')) {
+		if (Object.prototype.hasOwnProperty.call(participantIdentifier, 'attendeeId')) {
 			index = state.participants[token].findIndex(participant => participant.attendeeId === participantIdentifier.attendeeId)
-		} else if (participantIdentifier.hasOwnProperty('actorId') && participantIdentifier.hasOwnProperty('actorType')) {
+		} else if (Object.prototype.hasOwnProperty.call(participantIdentifier, 'actorId') && Object.prototype.hasOwnProperty.call(participantIdentifier, 'actorType')) {
 			index = state.participants[token].findIndex(participant => participant.actorId === participantIdentifier.actorId && participant.actorType === participantIdentifier.actorType)
 		} else {
 			index = state.participants[token].findIndex(participant => participant.sessionId === participantIdentifier.sessionId)
@@ -90,7 +99,7 @@ const getters = {
 			return {}
 		}
 
-		if (state.peers[token].hasOwnProperty(sessionId)) {
+		if (Object.prototype.hasOwnProperty.call(state.peers[token], sessionId)) {
 			return state.peers[token][sessionId]
 		}
 
@@ -101,9 +110,12 @@ const getters = {
 const mutations = {
 	/**
 	 * Adds a message to the store.
+	 *
 	 * @param {object} state current store state;
+	 * @param token.token
 	 * @param {object} token the token of the conversation;
 	 * @param {object} participant the participant;
+	 * @param token.participant
 	 */
 	addParticipant(state, { token, participant }) {
 		if (!state.participants[token]) {
@@ -122,7 +134,7 @@ const mutations = {
 		if (state.participants[token] && state.participants[token][index]) {
 			Vue.delete(state.participants[token], index)
 		} else {
-			console.error(`The conversation you are trying to purge doesn't exist`)
+			console.error('The conversation you are trying to purge doesn\'t exist')
 		}
 	},
 	setInCall(state, { token, sessionId, flags }) {
@@ -153,6 +165,7 @@ const mutations = {
 	},
 	/**
 	 * Purges a given conversation from the previously added participants
+	 *
 	 * @param {object} state current store state;
 	 * @param {string} token the conversation to purge;
 	 */
@@ -183,6 +196,7 @@ const actions = {
 	 * Only call this after purgeParticipantsStore, otherwise use addParticipantOnce
 	 *
 	 * @param {object} context default store context;
+	 * @param context.commit
 	 * @param {string} token the conversation to add the participant;
 	 * @param {object} participant the participant;
 	 */
@@ -193,6 +207,8 @@ const actions = {
 	 * Only add a participant when they are not there yet
 	 *
 	 * @param {object} context default store context;
+	 * @param context.commit
+	 * @param context.getters
 	 * @param {string} token the conversation to add the participant;
 	 * @param {object} participant the participant;
 	 */
@@ -213,6 +229,7 @@ const actions = {
 		})
 
 		const participant = getters.getParticipant(token, index)
+		// FIXME: don't promote already promoted or read resulting type from server response
 		const updatedData = {
 			participantType: participant.participantType === PARTICIPANT.TYPE.GUEST ? PARTICIPANT.TYPE.GUEST_MODERATOR : PARTICIPANT.TYPE.MODERATOR,
 		}
@@ -229,6 +246,7 @@ const actions = {
 		})
 
 		const participant = getters.getParticipant(token, index)
+		// FIXME: don't demote already demoted, use server response instead
 		const updatedData = {
 			participantType: participant.participantType === PARTICIPANT.TYPE.GUEST_MODERATOR ? PARTICIPANT.TYPE.GUEST : PARTICIPANT.TYPE.USER,
 		}
@@ -245,7 +263,9 @@ const actions = {
 	},
 	/**
 	 * Purges a given conversation from the previously added participants
+	 *
 	 * @param {object} context default store context;
+	 * @param context.commit
 	 * @param {string} token the conversation to purge;
 	 */
 	purgeParticipantsStore({ commit }, token) {
@@ -267,7 +287,7 @@ const actions = {
 		}
 
 		const updatedData = {
-			sessionId: sessionId,
+			sessionId,
 			inCall: PARTICIPANT.CALL_FLAG.DISCONNECTED,
 		}
 		commit('updateParticipant', { token, index, updatedData })
@@ -301,14 +321,14 @@ const actions = {
 			flags,
 		})
 
-		await joinCall(token, flags)
+		const actualFlags = await joinCall(token, flags)
 
 		const updatedData = {
-			inCall: flags,
+			inCall: actualFlags,
 		}
 		commit('updateParticipant', { token, index, updatedData })
 
-		EventBus.$once('Signaling::usersInRoom', () => {
+		EventBus.$once('signaling-users-in-room', () => {
 			commit('finishedConnecting', { token, sessionId: participantIdentifier.sessionId })
 		})
 
@@ -348,12 +368,123 @@ const actions = {
 	 * Resends email invitations for the given conversation.
 	 * If no userId is set, send to all applicable participants.
 	 *
-	 * @param {Object} _ unused
+	 * @param {object} _ unused
 	 * @param {string} token conversation token
 	 * @param {int} attendeeId attendee id to target, or null for all
 	 */
 	async resendInvitations(_, { token, attendeeId }) {
 		await resendInvitations(token, { attendeeId })
+	},
+
+	/**
+	 * Makes the current user active in the given conversation.
+	 *
+	 * @param {object} context unused
+	 * @param {string} token conversation token
+	 */
+	async joinConversation(context, { token }) {
+		const forceJoin = SessionStorage.getItem('joined_conversation') === token
+
+		try {
+			const response = await joinConversation({ token, forceJoin })
+
+			// Update the participant and actor session after a force join
+			context.dispatch('setCurrentParticipant', response.data.ocs.data)
+			context.dispatch('addConversation', response.data.ocs.data)
+			context.dispatch('updateSessionId', {
+				token,
+				participantIdentifier: context.getters.getParticipantIdentifier(),
+				sessionId: response.data.ocs.data.sessionId,
+			})
+
+			SessionStorage.setItem('joined_conversation', token)
+			EventBus.$emit('joined-conversation', { token })
+			return response
+		} catch (error) {
+			if (error?.response?.status === 409 && error?.response?.data?.ocs?.data) {
+				const responseData = error.response.data.ocs.data
+				let maxLastPingAge = new Date().getTime() / 1000 - 40
+				if (responseData.inCall !== PARTICIPANT.CALL_FLAG.DISCONNECTED) {
+					// When the user is/was in a call, we accept 20 seconds more delay
+					maxLastPingAge -= 20
+				}
+				if (maxLastPingAge > responseData.lastPing) {
+					console.debug('Force joining automatically because the old session didn\'t ping for 40 seconds')
+					await context.dispatch('forceJoinConversation', { token })
+				} else {
+					await context.dispatch('confirmForceJoinConversation', { token })
+				}
+			} else {
+				console.debug(error)
+				showError(t('spreed', 'Failed to join the conversation. Try to reload the page.'))
+			}
+		}
+	},
+
+	async confirmForceJoinConversation(context, { token }) {
+		// FIXME: UI stuff doesn't belong here, should rather
+		// be triggered using a store flag and a dedicated Vue component
+
+		// Little hack to check if the close button was used which we can't disable,
+		// not listen to when it was used.
+		const interval = setInterval(function() {
+			// eslint-disable-next-line no-undef
+			if ($('.oc-dialog-dim').length === 0) {
+				clearInterval(interval)
+				EventBus.$emit('duplicate-session-detected')
+				window.location = generateUrl('/apps/spreed')
+			}
+		}, 3000)
+
+		await OC.dialogs.confirmDestructive(
+			t('spreed', 'You are trying to join a conversation while having an active session in another window or device. This is currently not supported by Nextcloud Talk. What do you want to do?'),
+			t('spreed', 'Duplicate session'),
+			{
+				type: OC.dialogs.YES_NO_BUTTONS,
+				confirm: t('spreed', 'Join here'),
+				confirmClasses: 'error',
+				cancel: t('spreed', 'Leave this page'),
+			},
+			decision => {
+				clearInterval(interval)
+				if (!decision) {
+					// Cancel
+					EventBus.$emit('duplicate-session-detected')
+					window.location = generateUrl('/apps/spreed')
+				} else {
+					// Confirm
+					context.dispatch('forceJoinConversation', { token })
+				}
+			}
+		)
+	},
+
+	async forceJoinConversation(context, { token }) {
+		SessionStorage.setItem('joined_conversation', token)
+		await context.dispatch('joinConversation', { token })
+	},
+
+	/**
+	 * Makes the current user inactive in the given conversation.
+	 *
+	 * @param {object} context unused
+	 * @param {string} token conversation token
+	 */
+	async leaveConversation(context, { token }) {
+		await leaveConversation(token)
+	},
+
+	/**
+	 * Removes the current user from the conversation, which
+	 * means the user is not a participant any more.
+	 *
+	 * @param {object} context unused
+	 * @param {string} token conversation token
+	 */
+	async removeCurrentUserFromConversation(context, { token }) {
+		await removeCurrentUserFromConversation(token)
+		// If successful, deletes the conversation from the store
+		await context.dispatch('deleteConversation', token)
 	},
 }
 

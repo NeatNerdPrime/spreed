@@ -3,7 +3,7 @@
  *
  * @author Marco Ambrosini <marcoambrosini@pm.me>
  *
- * @license GNU AGPL version 3 or any later version
+ * @license AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -32,17 +32,17 @@ const sessionIssueHandler = {
 	},
 
 	beforeDestroy() {
-		EventBus.$off('duplicateSessionDetected', this.duplicateSessionTriggered)
-		EventBus.$off('deletedSessionDetected', this.deletedSessionTriggered)
+		EventBus.$off('duplicate-session-detected', this.duplicateSessionTriggered)
+		EventBus.$off('deleted-session-detected', this.deletedSessionTriggered)
 	},
 
 	beforeMount() {
-		EventBus.$on('duplicateSessionDetected', this.duplicateSessionTriggered)
-		EventBus.$on('deletedSessionDetected', this.deletedSessionTriggered)
+		EventBus.$on('duplicate-session-detected', this.duplicateSessionTriggered)
+		EventBus.$on('deleted-session-detected', this.deletedSessionTriggered)
 	},
 
 	methods: {
-		duplicateSessionTriggered() {
+		redirectTo(url) {
 			this.isLeavingAfterSessionIssue = true
 			SessionStorage.removeItem('joined_conversation')
 			// Need to delay until next tick, otherwise the PreventUnload is still being triggered
@@ -51,13 +51,17 @@ const sessionIssueHandler = {
 				// FIXME: can't use router push as it somehow doesn't clean up
 				// fully and leads the other instance where "Join here" was clicked
 				// to redirect to "not found"
-				window.location = generateUrl('/apps/spreed/duplicate-session')
+				window.location = url
 			})
 		},
 
+		duplicateSessionTriggered() {
+			this.redirectTo(generateUrl('/apps/spreed/duplicate-session'))
+		},
+
 		deletedSessionTriggered() {
-			this.$router.push({ name: 'notfound', params: { skipLeaveWarning: true } })
-			this.$store.dispatch('updateToken', '')
+			// workaround: force page refresh to kill stray WebRTC connections
+			this.redirectTo(generateUrl('/apps/spreed/not-found'))
 		},
 	},
 }

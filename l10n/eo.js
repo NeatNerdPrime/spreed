@@ -285,7 +285,6 @@ OC.L10N.register(
     "Close" : "Malfermi",
     "Camera" : "Fotilo",
     "Reply" : "Respondi",
-    "Remove" : "Forigi",
     "Today" : "Hodiaŭ",
     "Yesterday" : "Hieraŭ",
     "guest" : "gasto",
@@ -300,7 +299,8 @@ OC.L10N.register(
     "The password is wrong. Try again." : "La pasvorto malĝustas. Provu denove.",
     "Android app" : "Android-aplikaĵo",
     "iOS app" : "iOS-aplikaĵo",
-    "Share link" : "Kunhavigi ligilon",
-    "Enabled" : "Ŝaltita"
+    "Remove" : "Forigi",
+    "Enabled" : "Ŝaltita",
+    "Share link" : "Kunhavigi ligilon"
 },
 "nplurals=2; plural=(n != 1);");

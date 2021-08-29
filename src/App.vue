@@ -31,7 +31,7 @@
 		</AppContent>
 		<RightSidebar
 			:show-chat-in-sidebar="isInCall" />
-		<PreventUnload :when="warnLeaving" />
+		<PreventUnload :when="warnLeaving || isSendingMessages" />
 		<UploadEditor />
 		<SettingsDialog />
 		<ConversationSettingsDialog />
@@ -50,7 +50,6 @@ import { EventBus } from './services/EventBus'
 import BrowserStorage from './services/BrowserStorage'
 import { getCurrentUser } from '@nextcloud/auth'
 import {
-	joinConversation,
 	leaveConversationSync,
 } from './services/participantsService'
 import {
@@ -67,6 +66,7 @@ import UploadEditor from './components/UploadEditor'
 import SettingsDialog from './components/SettingsDialog/SettingsDialog'
 import ConversationSettingsDialog from './components/ConversationSettings/ConversationSettingsDialog'
 import '@nextcloud/dialogs/styles/toast.scss'
+import { CONVERSATION } from './constants'
 
 export default {
 	name: 'App',
@@ -110,13 +110,18 @@ export default {
 			return this.$store.getters.getUserId()
 		},
 
+		isSendingMessages() {
+			return this.$store.getters.isSendingMessages
+		},
+
 		warnLeaving() {
 			return !this.isLeavingAfterSessionIssue && this.isInCall
 		},
 
 		/**
 		 * Keeps a list for all last message ids
-		 * @returns {object} Map with token => lastMessageId
+		 *
+		 * @return {object} Map with token => lastMessageId
 		 */
 		lastMessageMap() {
 			const conversationList = this.$store.getters.conversationsList
@@ -147,7 +152,7 @@ export default {
 		},
 
 		/**
-		 * @returns {boolean} Returns true, if
+		 * @return {boolean} Returns true, if
 		 * - a conversation is newly added to lastMessageMap
 		 * - a conversation has a different last message id then previously
 		 */
@@ -166,10 +171,29 @@ export default {
 
 		/**
 		 * The current conversation token
-		 * @returns {string} The token.
+		 *
+		 * @return {string} The token.
 		 */
 		token() {
 			return this.$store.getters.getToken()
+		},
+
+		/**
+		 * The current conversation
+		 *
+		 * @return {object} The conversation object.
+		 */
+		currentConversation() {
+			return this.$store.getters.conversation(this.token)
+		},
+
+		/**
+		 * Computes whether the current conversation is one to one
+		 *
+		 * @return {boolean} The result
+		 */
+		isOneToOne() {
+			return this.currentConversation?.type === CONVERSATION.TYPE.ONE_TO_ONE
 		},
 	},
 
@@ -181,30 +205,37 @@ export default {
 
 			this.setPageTitle(this.getConversationName(this.token), this.atLeastOneLastMessageIdChanged)
 		},
+
+		token() {
+			// Collapse the sidebar if it's a 1to1 conversation
+			if (this.isOneToOne || BrowserStorage.getItem('sidebarOpen') === 'false') {
+				this.$store.dispatch('hideSidebar')
+			} else if (BrowserStorage.getItem('sidebarOpen') === 'true') {
+				this.$store.dispatch('showSidebar')
+			}
+		},
 	},
 
 	beforeDestroy() {
 		if (!getCurrentUser()) {
-			EventBus.$off('shouldRefreshConversations', this.debounceRefreshCurrentConversation)
+			EventBus.$off('should-refresh-conversations', this.debounceRefreshCurrentConversation)
 		}
-		EventBus.$off('Signaling::participantListChanged', this.debounceRefreshCurrentConversation)
 		document.removeEventListener('visibilitychange', this.changeWindowVisibility)
 	},
 
 	beforeMount() {
 		if (!getCurrentUser()) {
-			EventBus.$once('joinedConversation', () => {
+			EventBus.$once('joined-conversation', () => {
 				this.fixmeDelayedSetupOfGuestUsers()
 			})
-			EventBus.$on('shouldRefreshConversations', this.debounceRefreshCurrentConversation)
+			EventBus.$on('should-refresh-conversations', this.debounceRefreshCurrentConversation)
 		}
-		EventBus.$on('Signaling::participantListChanged', this.debounceRefreshCurrentConversation)
 
 		if (this.$route.name === 'conversation') {
 			// Update current token in the token store
 			this.$store.dispatch('updateToken', this.$route.params.token)
 			// Automatically join the conversation as well
-			joinConversation(this.$route.params.token)
+			this.$store.dispatch('joinConversation', { token: this.$route.params.token })
 		}
 
 		window.addEventListener('resize', this.onResize)
@@ -224,7 +255,7 @@ export default {
 			}
 		})
 
-		EventBus.$on('conversationsReceived', (params) => {
+		EventBus.$on('conversations-received', (params) => {
 			if (this.$route.name === 'conversation'
 				&& !this.$store.getters.conversation(this.token)) {
 				if (!params.singleConversation) {
@@ -243,7 +274,7 @@ export default {
 		 * component each time a new batch of conversations is received and processed in
 		 * the store.
 		 */
-		EventBus.$once('conversationsReceived', () => {
+		EventBus.$once('conversations-received', () => {
 			if (this.$route.name === 'conversation') {
 				// Adjust the page title once the conversation list is loaded
 				this.setPageTitle(this.getConversationName(this.token), false)
@@ -282,14 +313,14 @@ export default {
 			 * Fires a global event that tells the whole app that the route has changed. The event
 			 * carries the from and to objects as payload
 			 */
-			EventBus.$emit('routeChange', { from, to })
+			EventBus.$emit('route-change', { from, to })
 
 			next()
 		}
 
 		/**
 		 * Global before guard, this is called whenever a navigation is triggered.
-		*/
+		 */
 		Router.beforeEach((to, from, next) => {
 			if (this.warnLeaving && !to.params?.skipLeaveWarning) {
 				OC.dialogs.confirmDestructive(
@@ -314,6 +345,7 @@ export default {
 			} else {
 				beforeRouteChangeListener(to, from, next)
 			}
+
 		})
 
 		if (getCurrentUser()) {
@@ -324,7 +356,7 @@ export default {
 		}
 	},
 
-	mounted() {
+	async mounted() {
 		// see browserCheck mixin
 		this.checkBrowser()
 		// Check sidebar status in previous sessions
@@ -375,6 +407,7 @@ export default {
 
 		/**
 		 * Set the page title to the conversation name
+		 *
 		 * @param {string} title Prefix for the page title e.g. conversation name
 		 * @param {boolean} showAsterix Prefix for the page title e.g. conversation name
 		 */
@@ -394,11 +427,14 @@ export default {
 				}
 			}
 
+			let newTitle = this.defaultPageTitle
 			if (title !== '') {
-				window.document.title = (showAsterix ? '* ' : '') + `${title} - ${this.defaultPageTitle}`
-			} else {
-				window.document.title = (showAsterix ? '* ' : '') + this.defaultPageTitle
+				newTitle = `${title} - ${newTitle}`
 			}
+			if (showAsterix && !newTitle.startsWith('* ')) {
+				newTitle = '* ' + newTitle
+			}
+			window.document.title = newTitle
 		},
 
 		onResize() {
@@ -407,8 +443,9 @@ export default {
 
 		/**
 		 * Get a conversation's name.
+		 *
 		 * @param {string} token The conversation's token
-		 * @returns {string} The conversation's name
+		 * @return {string} The conversation's name
 		 */
 		getConversationName(token) {
 			if (!this.$store.getters.conversation(token)) {
@@ -431,7 +468,7 @@ export default {
 				 * Emits a global event that is used in App.vue to update the page title once the
 				 * ( if the current route is a conversation and once the conversations are received)
 				 */
-				EventBus.$emit('conversationsReceived', {
+				EventBus.$emit('conversations-received', {
 					singleConversation: true,
 				})
 			} catch (exception) {
@@ -454,13 +491,21 @@ export default {
 }
 </script>
 
+<style lang="scss">
+/** override toastify position due to top bar */
+body.has-topbar .toastify-top {
+	margin-top: 105px;
+}
+</style>
+
 <style lang="scss" scoped>
 .content {
 	height: 100%;
 
+	//FIXME: remove this v-deep once nextcloud vue v4 is adopted
 	::v-deep .app-navigation-toggle {
-		top: 10px;
-		right: -10px;
+		top: 8px;
+		right: -8px;
 		border-radius: var(--border-radius-pill);
 	}
 

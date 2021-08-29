@@ -290,7 +290,6 @@ OC.L10N.register(
     "Close" : "Затваряне",
     "Camera" : "Камера",
     "Reply" : "Отговори",
-    "Remove" : "Премахни",
     "Today" : "Днес",
     "Yesterday" : "Вчера",
     "Send message" : "Изпрати съобщение",
@@ -320,7 +319,8 @@ OC.L10N.register(
     "UDP and TCP" : "UDP и TCP",
     "UDP only" : "само UDP",
     "TCP only" : "само TCP",
-    "Share link" : "Сподели връзка",
-    "Enabled" : "Включено"
+    "Remove" : "Премахни",
+    "Enabled" : "Включено",
+    "Share link" : "Сподели връзка"
 },
 "nplurals=2; plural=(n != 1);");

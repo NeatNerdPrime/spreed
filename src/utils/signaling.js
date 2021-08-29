@@ -1,15 +1,21 @@
 /**
  * @copyright Copyright (c) 2019 Daniel Calviño Sánchez <danxuliu@gmail.com>
+ *
  * @copyright Copyright (c) 2019 Ivan Sein <ivan@nextcloud.com>
+ *
  * @copyright Copyright (c) 2019 Joachim Bauch <bauch@struktur.de>
+ *
  * @copyright Copyright (c) 2019 Joas Schilling <coding@schilljs.com>
  *
  * @author Daniel Calviño Sánchez <danxuliu@gmail.com>
+ *
  * @author Ivan Sein <ivan@nextcloud.com>
+ *
  * @author Joachim Bauch <bauch@struktur.de>
+ *
  * @author Joas Schilling <coding@schilljs.com>
  *
- * @license GNU AGPL version 3 or any later version
+ * @license AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -49,8 +55,8 @@ const Signaling = {
 	/**
 	 * Creates a connection to the signaling server
 	 *
-	 * @param {Object} settings The signaling settings
-	 * @returns {Standalone|Internal}
+	 * @param {object} settings The signaling settings
+	 * @return {Standalone|Internal}
 	 */
 	createConnection(settings) {
 		if (!settings) {
@@ -65,6 +71,9 @@ const Signaling = {
 	},
 }
 
+/**
+ * @param settings
+ */
 function Base(settings) {
 	this.settings = settings
 	this.sessionId = ''
@@ -82,7 +91,7 @@ function Base(settings) {
 
 Signaling.Base = Base
 Signaling.Base.prototype.on = function(ev, handler) {
-	if (!this.handlers.hasOwnProperty(ev)) {
+	if (!Object.prototype.hasOwnProperty.call(this.handlers, ev)) {
 		this.handlers[ev] = [handler]
 	} else {
 		this.handlers[ev].push(handler)
@@ -101,7 +110,7 @@ Signaling.Base.prototype.on = function(ev, handler) {
 }
 
 Signaling.Base.prototype.off = function(ev, handler) {
-	if (!this.handlers.hasOwnProperty(ev)) {
+	if (!Object.prototype.hasOwnProperty.call(this.handlers, ev)) {
 		return
 	}
 
@@ -123,7 +132,12 @@ Signaling.Base.prototype._trigger = function(ev, args) {
 		}
 	}
 
-	EventBus.$emit('Signaling::' + ev, args)
+	// Convert webrtc event names to kebab-case for "vue/custom-event-name-casing"
+	const kebabCase = string => string
+		.replace(/([a-z])([A-Z])/g, '$1-$2')
+		.replace(/[\s_]+/g, '-')
+		.toLowerCase()
+	EventBus.$emit('signaling-' + kebabCase(ev), args)
 }
 
 Signaling.Base.prototype.isNoMcuWarningEnabled = function() {
@@ -174,6 +188,16 @@ Signaling.Base.prototype.leaveCurrentRoom = function() {
 		this.currentRoomToken = null
 		this.nextcloudSessionId = null
 	}
+}
+
+Signaling.Base.prototype.updateCurrentCallFlags = function(flags) {
+	return new Promise((resolve, reject) => {
+		if (this.currentCallToken) {
+			this.updateCallFlags(this.currentCallToken, flags).then(() => { resolve() }).catch(reason => { reject(reason) })
+		} else {
+			resolve()
+		}
+	})
 }
 
 Signaling.Base.prototype.leaveCurrentCall = function() {
@@ -242,8 +266,8 @@ Signaling.Base.prototype._joinCallSuccess = function(/* token */) {
 
 Signaling.Base.prototype.joinCall = function(token, flags) {
 	return new Promise((resolve, reject) => {
-		axios.post(generateOcsUrl('apps/spreed/api/v4/call', 2) + token, {
-			flags: flags,
+		axios.post(generateOcsUrl('apps/spreed/api/v4/call/{token}', { token }), {
+			flags,
 		})
 			.then(function() {
 				this.currentCallToken = token
@@ -266,6 +290,27 @@ Signaling.Base.prototype._leaveCallSuccess = function(/* token */) {
 	// Override in subclasses if necessary.
 }
 
+Signaling.Base.prototype.updateCallFlags = function(token, flags) {
+	return new Promise((resolve, reject) => {
+		if (!token) {
+			reject(new Error())
+			return
+		}
+
+		axios.put(generateOcsUrl('apps/spreed/api/v4/call/{token}', { token }), {
+			flags,
+		})
+			.then(function() {
+				this.currentCallFlags = flags
+				this._trigger('updateCallFlags', [token, flags])
+				resolve()
+			}.bind(this))
+			.catch(function() {
+				reject(new Error())
+			})
+	})
+}
+
 Signaling.Base.prototype.leaveCall = function(token, keepToken) {
 	return new Promise((resolve, reject) => {
 		if (!token) {
@@ -273,7 +318,7 @@ Signaling.Base.prototype.leaveCall = function(token, keepToken) {
 			return
 		}
 
-		axios.delete(generateOcsUrl('apps/spreed/api/v4/call', 2) + token)
+		axios.delete(generateOcsUrl('apps/spreed/api/v4/call/{token}', { token }))
 			.then(function() {
 				this._trigger('leaveCall', [token, keepToken])
 				this._leaveCallSuccess(token)
@@ -291,6 +336,9 @@ Signaling.Base.prototype.leaveCall = function(token, keepToken) {
 }
 
 // Connection to the internal signaling server provided by the app.
+/**
+ * @param settings
+ */
 function Internal(settings) {
 	Signaling.Base.prototype.constructor.apply(this, arguments)
 	this.hideWarning = settings.hideWarning
@@ -343,12 +391,12 @@ Signaling.Internal.prototype.forceReconnect = function(newSession, flags) {
 	// FIXME Naive reconnection routine; as the same session is kept peers
 	// must be explicitly ended before the reconnection is forced.
 	this.leaveCall(this.currentCallToken, true)
-	this.joinCall(this.currentCallToken)
+	this.joinCall(this.currentCallToken, this.currentCallFlags)
 }
 
 Signaling.Internal.prototype._sendMessageWithCallback = function(ev) {
 	const message = [{
-		ev: ev,
+		ev,
 	}]
 
 	this._sendMessages(message)
@@ -362,7 +410,7 @@ Signaling.Internal.prototype._sendMessageWithCallback = function(ev) {
 }
 
 Signaling.Internal.prototype._sendMessages = function(messages) {
-	return axios.post(generateOcsUrl('apps/spreed/api/v1/signaling', 2) + this.currentRoomToken, {
+	return axios.post(generateOcsUrl('apps/spreed/api/v3/signaling/{token}', { token: this.currentRoomToken }), {
 		messages: JSON.stringify(messages),
 	})
 }
@@ -389,8 +437,8 @@ Signaling.Internal.prototype.sendCallMessage = function(data) {
 }
 
 /**
-	 * @private
-	 */
+ * @private
+ */
 Signaling.Internal.prototype._startPullingMessages = function() {
 	const token = this.currentRoomToken
 	if (!token) {
@@ -444,11 +492,11 @@ Signaling.Internal.prototype._startPullingMessages = function() {
 				console.error('Session was killed but the conversation still exists')
 				this._trigger('pullMessagesStoppedOnFail')
 
-				EventBus.$emit('duplicateSessionDetected')
+				EventBus.$emit('duplicate-session-detected')
 			} else if (error?.response?.status === 404 || error?.response?.status === 403) {
 				// Conversation was deleted or the user was removed
 				console.error('Conversation was not found anymore')
-				EventBus.$emit('deletedSessionDetected')
+				EventBus.$emit('deleted-session-detected')
 			} else if (token) {
 				if (this.pullMessagesFails === 1) {
 					this.pullMessageErrorToast = showError(t('spreed', 'Lost connection to signaling server. Trying to reconnect.'), {
@@ -477,8 +525,8 @@ Signaling.Internal.prototype._startPullingMessages = function() {
 }
 
 /**
-	 * @private
-	 */
+ * @private
+ */
 Signaling.Internal.prototype.sendPendingMessages = function() {
 	if (!this.spreedArrayConnection.length || this.isSendingMessages) {
 		return
@@ -496,6 +544,10 @@ Signaling.Internal.prototype.sendPendingMessages = function() {
 	}.bind(this))
 }
 
+/**
+ * @param settings
+ * @param urls
+ */
 function Standalone(settings, urls) {
 	Signaling.Base.prototype.constructor.apply(this, arguments)
 	if (typeof (urls) === 'string') {
@@ -630,7 +682,7 @@ Signaling.Standalone.prototype.connect = function() {
 			console.debug('Received', data)
 		}
 		const id = data.id
-		if (id && this.callbacks.hasOwnProperty(id)) {
+		if (id && Object.prototype.hasOwnProperty.call(this.callbacks, id)) {
 			const cb = this.callbacks[id]
 			delete this.callbacks[id]
 			cb(data)
@@ -652,7 +704,7 @@ Signaling.Standalone.prototype.connect = function() {
 				this.nextcloudSessionId = null
 			} else {
 				// TODO(fancycode): Only fetch properties of room that was modified.
-				EventBus.$emit('shouldRefreshConversations')
+				EventBus.$emit('should-refresh-conversations')
 			}
 			break
 		case 'event':
@@ -681,8 +733,8 @@ Signaling.Standalone.prototype.connect = function() {
 Signaling.Standalone.prototype.sendBye = function() {
 	if (this.connected) {
 		this.doSend({
-			'type': 'bye',
-			'bye': {},
+			type: 'bye',
+			bye: {},
 		})
 	}
 	this.resumeId = null
@@ -743,13 +795,13 @@ Signaling.Standalone.prototype.forceReconnect = function(newSession, flags) {
 Signaling.Standalone.prototype.sendCallMessage = function(data) {
 	if (data.type === 'control') {
 		this.doSend({
-			'type': 'control',
-			'control': {
-				'recipient': {
-					'type': 'session',
-					'sessionid': data.to,
+			type: 'control',
+			control: {
+				recipient: {
+					type: 'session',
+					sessionid: data.to,
 				},
-				'data': data.payload,
+				data: data.payload,
 			},
 		})
 
@@ -757,13 +809,13 @@ Signaling.Standalone.prototype.sendCallMessage = function(data) {
 	}
 
 	this.doSend({
-		'type': 'message',
-		'message': {
-			'recipient': {
-				'type': 'session',
-				'sessionid': data.to,
+		type: 'message',
+		message: {
+			recipient: {
+				type: 'session',
+				sessionid: data.to,
 			},
-			'data': data,
+			data,
 		},
 	})
 }
@@ -775,12 +827,12 @@ Signaling.Standalone.prototype.sendRoomMessage = function(data) {
 	}
 
 	this.doSend({
-		'type': 'message',
-		'message': {
-			'recipient': {
-				'type': 'room',
+		type: 'message',
+		message: {
+			recipient: {
+				type: 'room',
 			},
-			'data': data,
+			data,
 		},
 	})
 }
@@ -796,7 +848,7 @@ Signaling.Standalone.prototype.doSend = function(msg, callback) {
 	if (callback) {
 		const id = this.id++
 		this.callbacks[id] = callback
-		msg['id'] = '' + id
+		msg.id = '' + id
 	}
 	if (OC.debug) {
 		console.debug('Sending', msg)
@@ -809,25 +861,25 @@ Signaling.Standalone.prototype.sendHello = function() {
 	if (this.resumeId) {
 		console.debug('Trying to resume session', this.sessionId)
 		msg = {
-			'type': 'hello',
-			'hello': {
-				'version': '1.0',
-				'resumeid': this.resumeId,
+			type: 'hello',
+			hello: {
+				version: '1.0',
+				resumeid: this.resumeId,
 			},
 		}
 	} else {
 		// Already reconnected with a new session.
 		this._forceReconnect = false
-		const url = generateOcsUrl('apps/spreed/api/v1/signaling', 2) + 'backend'
+		const url = generateOcsUrl('apps/spreed/api/v3/signaling/backend')
 		msg = {
-			'type': 'hello',
-			'hello': {
-				'version': '1.0',
-				'auth': {
-					'url': url,
-					'params': {
-						'userid': this.settings.userId,
-						'ticket': this.settings.ticket,
+			type: 'hello',
+			hello: {
+				version: '1.0',
+				auth: {
+					url,
+					params: {
+						userid: this.settings.userId,
+						ticket: this.settings.ticket,
 					},
 				},
 			},
@@ -970,13 +1022,13 @@ Signaling.Standalone.prototype._joinRoomSuccess = function(token, nextcloudSessi
 
 	console.debug('Join room', token)
 	this.doSend({
-		'type': 'room',
-		'room': {
-			'roomid': token,
+		type: 'room',
+		room: {
+			roomid: token,
 			// Pass the Nextcloud session id to the signaling server. The
 			// session id will be passed through to Nextcloud to check if
 			// the (Nextcloud) user is allowed to join the room.
-			'sessionid': nextcloudSessionId,
+			sessionid: nextcloudSessionId,
 		},
 	}, function(data) {
 		this.joinResponseReceived(data, token)
@@ -995,10 +1047,10 @@ Signaling.Standalone.prototype.joinCall = function(token, flags) {
 
 		const promise = new Promise((resolve, reject) => {
 			this.pendingJoinCall = {
-				token: token,
-				flags: flags,
-				resolve: resolve,
-				reject: reject,
+				token,
+				flags,
+				resolve,
+				reject,
 			}
 		})
 
@@ -1040,9 +1092,9 @@ Signaling.Standalone.prototype.joinResponseReceived = function(data, token) {
 Signaling.Standalone.prototype._doLeaveRoom = function(token) {
 	console.debug('Leave room', token)
 	this.doSend({
-		'type': 'room',
-		'room': {
-			'roomid': '',
+		type: 'room',
+		room: {
+			roomid: '',
 		},
 	}, function(data) {
 		console.debug('Left', data)
@@ -1133,7 +1185,7 @@ Signaling.Standalone.prototype.processRoomMessageEvent = function(data) {
 	switch (data.type) {
 	case 'chat':
 		// FIXME this is not listened to
-		EventBus.$emit('shouldRefreshChatMessages')
+		EventBus.$emit('should-refresh-chat-messages')
 		break
 	default:
 		console.error('Unknown room message event', data)
@@ -1149,13 +1201,13 @@ Signaling.Standalone.prototype.processRoomListEvent = function(data) {
 				return
 			}
 			console.error('User or session was removed from the conversation, redirecting')
-			EventBus.$emit('deletedSessionDetected')
+			EventBus.$emit('deleted-session-detected')
 			break
 		}
 		// eslint-disable-next-line no-fallthrough
 	default:
 		console.debug('Room list event', data)
-		EventBus.$emit('shouldRefreshConversations')
+		EventBus.$emit('should-refresh-conversations')
 		break
 	}
 }
@@ -1187,15 +1239,15 @@ Signaling.Standalone.prototype.requestOffer = function(sessionid, roomType) {
 	}
 	console.debug('Request offer from', sessionid)
 	this.doSend({
-		'type': 'message',
-		'message': {
-			'recipient': {
-				'type': 'session',
-				'sessionid': sessionid,
+		type: 'message',
+		message: {
+			recipient: {
+				type: 'session',
+				sessionid,
 			},
-			'data': {
-				'type': 'requestoffer',
-				'roomType': roomType,
+			data: {
+				type: 'requestoffer',
+				roomType,
 			},
 		},
 	})
@@ -1216,15 +1268,15 @@ Signaling.Standalone.prototype.sendOffer = function(sessionid, roomType) {
 	}
 	console.debug('Send offer to', sessionid)
 	this.doSend({
-		'type': 'message',
-		'message': {
-			'recipient': {
-				'type': 'session',
-				'sessionid': sessionid,
+		type: 'message',
+		message: {
+			recipient: {
+				type: 'session',
+				sessionid,
 			},
-			'data': {
-				'type': 'sendoffer',
-				'roomType': roomType,
+			data: {
+				type: 'sendoffer',
+				roomType,
 			},
 		},
 	})

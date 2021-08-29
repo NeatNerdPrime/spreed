@@ -64,7 +64,6 @@ OC.L10N.register(
     "Conversation name" : "Nombre de conversación",
     "Camera" : "Cámara",
     "Reply" : "Responder",
-    "Remove" : "Borrar",
     "Today" : "Hoy",
     "Yesterday" : "Ayer",
     "Send message" : "Enviar mensaje",
@@ -93,7 +92,8 @@ OC.L10N.register(
     "UDP and TCP" : "UDP y TCP",
     "UDP only" : "sólo UDP",
     "TCP only" : "sólo TCP",
-    "Share link" : "Compartir link",
-    "Enabled" : "Habilitado"
+    "Remove" : "Borrar",
+    "Enabled" : "Habilitado",
+    "Share link" : "Compartir link"
 },
 "nplurals=2; plural=(n != 1);");

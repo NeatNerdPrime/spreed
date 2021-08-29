@@ -66,7 +66,6 @@ OC.L10N.register(
     "Password protect" : "Protexer con contraseña",
     "Close" : "Zarrar",
     "Reply" : "Rempuesta",
-    "Remove" : "Desaniciar",
     "Today" : "Güei",
     "Yesterday" : "Ayeri",
     "guest" : "invitáu",
@@ -90,7 +89,8 @@ OC.L10N.register(
     "UDP and TCP" : "UDP y TCP",
     "UDP only" : "Namái UDP",
     "TCP only" : "Namái TCP",
-    "Share link" : "Compartir enllaz",
-    "Enabled" : "Habilitar"
+    "Remove" : "Desaniciar",
+    "Enabled" : "Habilitar",
+    "Share link" : "Compartir enllaz"
 },
 "nplurals=2; plural=(n != 1);");

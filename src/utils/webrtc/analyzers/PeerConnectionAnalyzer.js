@@ -2,7 +2,7 @@
  *
  * @copyright Copyright (c) 2020, Daniel Calviño Sánchez (danxuliu@gmail.com)
  *
- * @license GNU AGPL version 3 or any later version
+ * @license AGPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -73,38 +73,59 @@ const PEER_DIRECTION = {
  */
 function PeerConnectionAnalyzer() {
 	this._packets = {
-		'audio': new AverageStatValue(5, STAT_VALUE_TYPE.CUMULATIVE),
-		'video': new AverageStatValue(5, STAT_VALUE_TYPE.CUMULATIVE),
+		audio: new AverageStatValue(5, STAT_VALUE_TYPE.CUMULATIVE),
+		video: new AverageStatValue(5, STAT_VALUE_TYPE.CUMULATIVE),
 	}
 	this._packetsLost = {
-		'audio': new AverageStatValue(5, STAT_VALUE_TYPE.CUMULATIVE),
-		'video': new AverageStatValue(5, STAT_VALUE_TYPE.CUMULATIVE),
+		audio: new AverageStatValue(5, STAT_VALUE_TYPE.CUMULATIVE),
+		video: new AverageStatValue(5, STAT_VALUE_TYPE.CUMULATIVE),
 	}
 	this._packetsLostRatio = {
-		'audio': new AverageStatValue(5, STAT_VALUE_TYPE.RELATIVE),
-		'video': new AverageStatValue(5, STAT_VALUE_TYPE.RELATIVE),
+		audio: new AverageStatValue(5, STAT_VALUE_TYPE.RELATIVE),
+		video: new AverageStatValue(5, STAT_VALUE_TYPE.RELATIVE),
 	}
 	this._packetsPerSecond = {
-		'audio': new AverageStatValue(5, STAT_VALUE_TYPE.RELATIVE),
-		'video': new AverageStatValue(5, STAT_VALUE_TYPE.RELATIVE),
+		audio: new AverageStatValue(5, STAT_VALUE_TYPE.RELATIVE),
+		video: new AverageStatValue(5, STAT_VALUE_TYPE.RELATIVE),
 	}
 	// Latest values have a higher weight than the default one to better detect
 	// sudden changes in the round trip time, which can lead to discarded (but
 	// not lost) packets.
 	this._roundTripTime = {
-		'audio': new AverageStatValue(5, STAT_VALUE_TYPE.RELATIVE, 5),
-		'video': new AverageStatValue(5, STAT_VALUE_TYPE.RELATIVE, 5),
+		audio: new AverageStatValue(5, STAT_VALUE_TYPE.RELATIVE, 5),
+		video: new AverageStatValue(5, STAT_VALUE_TYPE.RELATIVE, 5),
 	}
 	// Only the last relative value is used, but as it is a cumulative value the
 	// previous one is needed as a base to calculate the last one.
 	this._timestamps = {
-		'audio': new AverageStatValue(2, STAT_VALUE_TYPE.CUMULATIVE),
-		'video': new AverageStatValue(2, STAT_VALUE_TYPE.CUMULATIVE),
+		audio: new AverageStatValue(2, STAT_VALUE_TYPE.CUMULATIVE),
+		video: new AverageStatValue(2, STAT_VALUE_TYPE.CUMULATIVE),
+	}
+	this._timestampsForLogs = {
+		audio: new AverageStatValue(5, STAT_VALUE_TYPE.CUMULATIVE),
+		video: new AverageStatValue(5, STAT_VALUE_TYPE.CUMULATIVE),
+	}
+
+	this._stagedPackets = {
+		audio: [],
+		video: [],
+	}
+	this._stagedPacketsLost = {
+		audio: [],
+		video: [],
+	}
+	this._stagedRoundTripTime = {
+		audio: [],
+		video: [],
+	}
+	this._stagedTimestamps = {
+		audio: [],
+		video: [],
 	}
 
 	this._analysisEnabled = {
-		'audio': true,
-		'video': true,
+		audio: true,
+		video: true,
 	}
 
 	this._handlers = []
@@ -117,20 +138,22 @@ function PeerConnectionAnalyzer() {
 	this._handleIceConnectionStateChangedBound = this._handleIceConnectionStateChanged.bind(this)
 	this._processStatsBound = this._processStats.bind(this)
 
-	this._connectionQualityAudio = CONNECTION_QUALITY.UNKNOWN
-	this._connectionQualityVideo = CONNECTION_QUALITY.UNKNOWN
+	this._connectionQuality = {
+		audio: CONNECTION_QUALITY.UNKNOWN,
+		video: CONNECTION_QUALITY.UNKNOWN,
+	}
 }
 PeerConnectionAnalyzer.prototype = {
 
-	on: function(event, handler) {
-		if (!this._handlers.hasOwnProperty(event)) {
+	on(event, handler) {
+		if (!Object.prototype.hasOwnProperty.call(this._handlers, event)) {
 			this._handlers[event] = [handler]
 		} else {
 			this._handlers[event].push(handler)
 		}
 	},
 
-	off: function(event, handler) {
+	off(event, handler) {
 		const handlers = this._handlers[event]
 		if (!handlers) {
 			return
@@ -142,7 +165,7 @@ PeerConnectionAnalyzer.prototype = {
 		}
 	},
 
-	_trigger: function(event, args) {
+	_trigger(event, args) {
 		let handlers = this._handlers[event]
 		if (!handlers) {
 			return
@@ -157,33 +180,33 @@ PeerConnectionAnalyzer.prototype = {
 		}
 	},
 
-	getConnectionQualityAudio: function() {
-		return this._connectionQualityAudio
+	getConnectionQualityAudio() {
+		return this._connectionQuality.audio
 	},
 
-	getConnectionQualityVideo: function() {
-		return this._connectionQualityVideo
+	getConnectionQualityVideo() {
+		return this._connectionQuality.video
 	},
 
-	_setConnectionQualityAudio: function(connectionQualityAudio) {
-		if (this._connectionQualityAudio === connectionQualityAudio) {
+	_setConnectionQualityAudio(connectionQualityAudio) {
+		if (this._connectionQuality.audio === connectionQualityAudio) {
 			return
 		}
 
-		this._connectionQualityAudio = connectionQualityAudio
+		this._connectionQuality.audio = connectionQualityAudio
 		this._trigger('change:connectionQualityAudio', [connectionQualityAudio])
 	},
 
-	_setConnectionQualityVideo: function(connectionQualityVideo) {
-		if (this._connectionQualityVideo === connectionQualityVideo) {
+	_setConnectionQualityVideo(connectionQualityVideo) {
+		if (this._connectionQuality.video === connectionQualityVideo) {
 			return
 		}
 
-		this._connectionQualityVideo = connectionQualityVideo
+		this._connectionQuality.video = connectionQualityVideo
 		this._trigger('change:connectionQualityVideo', [connectionQualityVideo])
 	},
 
-	setPeerConnection: function(peerConnection, peerDirection = null) {
+	setPeerConnection(peerConnection, peerDirection = null) {
 		if (this._peerConnection) {
 			this._peerConnection.removeEventListener('iceconnectionstatechange', this._handleIceConnectionStateChangedBound)
 			this._stopGetStatsInterval()
@@ -192,41 +215,53 @@ PeerConnectionAnalyzer.prototype = {
 		this._peerConnection = peerConnection
 		this._peerDirection = peerDirection
 
+		this._setConnectionQualityAudio(CONNECTION_QUALITY.UNKNOWN)
+		this._setConnectionQualityVideo(CONNECTION_QUALITY.UNKNOWN)
+
 		if (this._peerConnection) {
 			this._peerConnection.addEventListener('iceconnectionstatechange', this._handleIceConnectionStateChangedBound)
 			this._handleIceConnectionStateChangedBound()
 		}
 	},
 
-	setAnalysisEnabledAudio: function(analysisEnabledAudio) {
-		this._analysisEnabled['audio'] = analysisEnabledAudio
+	setAnalysisEnabledAudio(analysisEnabledAudio) {
+		if (this._analysisEnabled.audio === analysisEnabledAudio) {
+			return
+		}
+
+		this._analysisEnabled.audio = analysisEnabledAudio
 
 		if (!analysisEnabledAudio) {
 			this._setConnectionQualityAudio(CONNECTION_QUALITY.UNKNOWN)
 		} else {
-			this._packets['audio'].reset()
-			this._packetsLost['audio'].reset()
-			this._packetsLostRatio['audio'].reset()
-			this._packetsPerSecond['audio'].reset()
-			this._timestamps['audio'].reset()
+			this._resetStats('audio')
 		}
 	},
 
-	setAnalysisEnabledVideo: function(analysisEnabledVideo) {
-		this._analysisEnabled['video'] = analysisEnabledVideo
+	setAnalysisEnabledVideo(analysisEnabledVideo) {
+		if (this._analysisEnabled.video === analysisEnabledVideo) {
+			return
+		}
+
+		this._analysisEnabled.video = analysisEnabledVideo
 
 		if (!analysisEnabledVideo) {
 			this._setConnectionQualityVideo(CONNECTION_QUALITY.UNKNOWN)
 		} else {
-			this._packets['video'].reset()
-			this._packetsLost['video'].reset()
-			this._packetsLostRatio['video'].reset()
-			this._packetsPerSecond['video'].reset()
-			this._timestamps['video'].reset()
+			this._resetStats('video')
 		}
 	},
 
-	_handleIceConnectionStateChanged: function() {
+	_resetStats(kind) {
+		this._packets[kind].reset()
+		this._packetsLost[kind].reset()
+		this._packetsLostRatio[kind].reset()
+		this._packetsPerSecond[kind].reset()
+		this._timestamps[kind].reset()
+		this._timestampsForLogs[kind].reset()
+	},
+
+	_handleIceConnectionStateChanged() {
 		// Note that even if the ICE connection state is "disconnected" the
 		// connection is actually active, media is still transmitted, and the
 		// stats are properly updated.
@@ -244,17 +279,28 @@ PeerConnectionAnalyzer.prototype = {
 			return
 		}
 
+		// When a connection is started the stats must be reset, as a different
+		// peer connection could have been used before and its stats would be
+		// unrelated to the new one.
+		// When a connection is restarted the reported stats continue from the
+		// last values. However, during the reconnection the stats will not be
+		// updated, so the timestamps will suddenly increase once the connection
+		// is ready again. This could cause a wrong analysis, so the stats
+		// should be reset too in that case.
+		this._resetStats('audio')
+		this._resetStats('video')
+
 		this._getStatsInterval = window.setInterval(() => {
 			this._peerConnection.getStats().then(this._processStatsBound)
 		}, 1000)
 	},
 
-	_stopGetStatsInterval: function() {
+	_stopGetStatsInterval() {
 		window.clearInterval(this._getStatsInterval)
 		this._getStatsInterval = null
 	},
 
-	_processStats: function(stats) {
+	_processStats(stats) {
 		if (!this._peerConnection || (this._peerConnection.iceConnectionState !== 'connected' && this._peerConnection.iceConnectionState !== 'completed' && this._peerConnection.iceConnectionState !== 'disconnected')) {
 			return
 		}
@@ -265,32 +311,32 @@ PeerConnectionAnalyzer.prototype = {
 			this._processReceiverStats(stats)
 		}
 
-		if (this._analysisEnabled['audio']) {
+		if (this._analysisEnabled.audio) {
 			this._setConnectionQualityAudio(this._calculateConnectionQualityAudio())
 		}
-		if (this._analysisEnabled['video']) {
+		if (this._analysisEnabled.video) {
 			this._setConnectionQualityVideo(this._calculateConnectionQualityVideo())
 		}
 	},
 
-	_processSenderStats: function(stats) {
+	_processSenderStats(stats) {
 		// Packets are calculated as "packetsReceived + packetsLost" or as
 		// "packetsSent" depending on the browser (see below).
 		const packets = {
-			'audio': -1,
-			'video': -1,
+			audio: -1,
+			video: -1,
 		}
 
 		// Packets stats for a sender are checked from the point of view of the
 		// receiver.
 		const packetsReceived = {
-			'audio': -1,
-			'video': -1,
+			audio: -1,
+			video: -1,
 		}
 
 		const packetsLost = {
-			'audio': -1,
-			'video': -1,
+			audio: -1,
+			video: -1,
 		}
 
 		// If "packetsReceived" is not available (like in Chromium) use
@@ -298,30 +344,30 @@ PeerConnectionAnalyzer.prototype = {
 		// the received statistics, so checking "packetsLost" against it may not
 		// be fully accurate, but it should be close enough.
 		const packetsSent = {
-			'audio': -1,
-			'video': -1,
+			audio: -1,
+			video: -1,
 		}
 
 		// Timestamp is set to "timestampReceived" or "timestampSent" depending
 		// on how "packets" were calculated.
 		const timestamp = {
-			'audio': -1,
-			'video': -1,
+			audio: -1,
+			video: -1,
 		}
 
 		const timestampReceived = {
-			'audio': -1,
-			'video': -1,
+			audio: -1,
+			video: -1,
 		}
 
 		const timestampSent = {
-			'audio': -1,
-			'video': -1,
+			audio: -1,
+			video: -1,
 		}
 
 		const roundTripTime = {
-			'audio': -1,
-			'video': -1,
+			audio: -1,
+			video: -1,
 		}
 
 		for (const stat of stats.values()) {
@@ -373,61 +419,30 @@ PeerConnectionAnalyzer.prototype = {
 				packetsLost[kind] = this._packetsLost[kind].getLastRawValue()
 			}
 
-			if (packets[kind] >= 0) {
-				this._packets[kind].add(packets[kind])
-			}
-			if (packetsLost[kind] >= 0) {
-				this._packetsLost[kind].add(packetsLost[kind])
-			}
-			if (packets[kind] >= 0 && packetsLost[kind] >= 0) {
-				// The packet stats are cumulative values, so the isolated
-				// values are got from the helper object.
-				// If there were no transmitted packets in the last stats the
-				// ratio is higher than 1 both to signal that and to force the
-				// quality towards a very bad quality faster, but not
-				// immediately.
-				let packetsLostRatio = 1.5
-				if (this._packets[kind].getLastRelativeValue() > 0) {
-					packetsLostRatio = this._packetsLost[kind].getLastRelativeValue() / this._packets[kind].getLastRelativeValue()
-				}
-				this._packetsLostRatio[kind].add(packetsLostRatio)
-			}
-			if (timestamp[kind] >= 0) {
-				this._timestamps[kind].add(timestamp[kind])
-			}
-			if (packets[kind] >= 0 && timestamp[kind] >= 0) {
-				const elapsedSeconds = this._timestamps[kind].getLastRelativeValue() / 1000
-				// The packet stats are cumulative values, so the isolated
-				// values are got from the helper object.
-				const packetsPerSecond = this._packets[kind].getLastRelativeValue() / elapsedSeconds
-				this._packetsPerSecond[kind].add(packetsPerSecond)
-			}
-			if (roundTripTime[kind] >= 0) {
-				this._roundTripTime[kind].add(roundTripTime[kind])
-			}
+			this._addStats(kind, packets[kind], packetsLost[kind], timestamp[kind], roundTripTime[kind])
 		}
 	},
 
-	_processReceiverStats: function(stats) {
+	_processReceiverStats(stats) {
 		// Packets are calculated as "packetsReceived + packetsLost".
 		const packets = {
-			'audio': -1,
-			'video': -1,
+			audio: -1,
+			video: -1,
 		}
 
 		const packetsReceived = {
-			'audio': -1,
-			'video': -1,
+			audio: -1,
+			video: -1,
 		}
 
 		const packetsLost = {
-			'audio': -1,
-			'video': -1,
+			audio: -1,
+			video: -1,
 		}
 
 		const timestamp = {
-			'audio': -1,
-			'video': -1,
+			audio: -1,
+			video: -1,
 		}
 
 		for (const stat of stats.values()) {
@@ -463,53 +478,182 @@ PeerConnectionAnalyzer.prototype = {
 				packetsLost[kind] = this._packetsLost[kind].getLastRawValue()
 			}
 
-			if (packets[kind] >= 0) {
-				this._packets[kind].add(packets[kind])
-			}
-			if (packetsLost[kind] >= 0) {
-				this._packetsLost[kind].add(packetsLost[kind])
-			}
-			if (packets[kind] >= 0 && packetsLost[kind] >= 0) {
-				// The packet stats are cumulative values, so the isolated
-				// values are got from the helper object.
-				// If there were no transmitted packets in the last stats the
-				// ratio is higher than 1 both to signal that and to force the
-				// quality towards a very bad quality faster, but not
-				// immediately.
-				let packetsLostRatio = 1.5
-				if (this._packets[kind].getLastRelativeValue() > 0) {
-					packetsLostRatio = this._packetsLost[kind].getLastRelativeValue() / this._packets[kind].getLastRelativeValue()
-				}
-				this._packetsLostRatio[kind].add(packetsLostRatio)
-			}
-			if (timestamp[kind] >= 0) {
-				this._timestamps[kind].add(timestamp[kind])
-			}
-			if (packets[kind] >= 0 && timestamp[kind] >= 0) {
-				const elapsedSeconds = this._timestamps[kind].getLastRelativeValue() / 1000
-				// The packet stats are cumulative values, so the isolated
-				// values are got from the helper object.
-				const packetsPerSecond = this._packets[kind].getLastRelativeValue() / elapsedSeconds
-				this._packetsPerSecond[kind].add(packetsPerSecond)
-			}
+			this._addStats(kind, packets[kind], packetsLost[kind], timestamp[kind])
 		}
 	},
 
-	_calculateConnectionQualityAudio: function() {
-		return this._calculateConnectionQuality(this._packetsLostRatio['audio'], this._packetsPerSecond['audio'], this._roundTripTime['audio'])
+	/**
+	 * Adds the stats reported by the browser to the average stats used to do
+	 * the analysis.
+	 *
+	 * The stats reported by the browser can sometimes stall for a second (or
+	 * more, but typically they stall only for a single report). When that
+	 * happens the stats are still reported, but with the same number of packets
+	 * as in the previous report (timestamp and round trip time are updated,
+	 * though). In that case the given stats are not added yet to the average
+	 * stats; they are kept on hold until more stats are provided by the browser
+	 * and it can be determined if the previous stats were stalled or not. If
+	 * they were stalled the previous and new stats are distributed, and if they
+	 * were not they are added as is to the average stats.
+	 *
+	 * @param {string} kind the type of the stats ("audio" or "video")
+	 * @param {number} packets the cumulative number of packets
+	 * @param {number} packetsLost the cumulative number of lost packets
+	 * @param {number} timestamp the cumulative timestamp
+	 * @param {number} roundTripTime the relative round trip time
+	 */
+	_addStats(kind, packets, packetsLost, timestamp, roundTripTime) {
+		if (this._stagedPackets[kind].length === 0) {
+			if (packets !== this._packets[kind].getLastRawValue()) {
+				this._commitStats(kind, packets, packetsLost, timestamp, roundTripTime)
+			} else {
+				this._stageStats(kind, packets, packetsLost, timestamp, roundTripTime)
+			}
+
+			return
+		}
+
+		this._stageStats(kind, packets, packetsLost, timestamp, roundTripTime)
+
+		// If the packets have changed now it is assumed that the previous stats
+		// were stalled.
+		if (packets > 0) {
+			this._distributeStagedStats(kind)
+		}
+
+		while (this._stagedPackets[kind].length > 0) {
+			const stagedPackets = this._stagedPackets[kind].shift()
+			const stagedPacketsLost = this._stagedPacketsLost[kind].shift()
+			const stagedTimestamp = this._stagedTimestamps[kind].shift()
+			const stagedRoundTripTime = this._stagedRoundTripTime[kind].shift()
+
+			this._commitStats(kind, stagedPackets, stagedPacketsLost, stagedTimestamp, stagedRoundTripTime)
+		}
 	},
 
-	_calculateConnectionQualityVideo: function() {
-		return this._calculateConnectionQuality(this._packetsLostRatio['video'], this._packetsPerSecond['video'], this._roundTripTime['video'])
+	_stageStats(kind, packets, packetsLost, timestamp, roundTripTime) {
+		this._stagedPackets[kind].push(packets)
+		this._stagedPacketsLost[kind].push(packetsLost)
+		this._stagedTimestamps[kind].push(timestamp)
+		this._stagedRoundTripTime[kind].push(roundTripTime)
 	},
 
-	_calculateConnectionQuality: function(packetsLostRatio, packetsPerSecond, roundTripTime) {
+	/**
+	 * Distributes the values of the staged stats proportionately to their
+	 * timestamps.
+	 *
+	 * Once the stats unstall the new stats are a sum of the values that should
+	 * have been reported before and the actual new values. The stats typically
+	 * stall for just a second, but they can stall for an arbitrary length too.
+	 * Due to this the staged stats need to be distributed based on their
+	 * timestamps.
+	 *
+	 * @param {string} kind the type of the stats ("audio" or "video")
+	 */
+	_distributeStagedStats(kind) {
+		let packetsBase = this._packets[kind].getLastRawValue()
+		let packetsLostBase = this._packetsLost[kind].getLastRawValue()
+		let timestampsBase = this._timestamps[kind].getLastRawValue()
+
+		let packetsTotal = 0
+		let packetsLostTotal = 0
+		let timestampsTotal = 0
+
+		for (let i = 0; i < this._stagedPackets[kind].length; i++) {
+			packetsTotal += (this._stagedPackets[kind][i] - packetsBase)
+			packetsBase = this._stagedPackets[kind][i]
+
+			packetsLostTotal += (this._stagedPacketsLost[kind][i] - packetsLostBase)
+			packetsLostBase = this._stagedPacketsLost[kind][i]
+
+			timestampsTotal += (this._stagedTimestamps[kind][i] - timestampsBase)
+			timestampsBase = this._stagedTimestamps[kind][i]
+		}
+
+		packetsBase = this._packets[kind].getLastRawValue()
+		packetsLostBase = this._packetsLost[kind].getLastRawValue()
+		timestampsBase = this._timestamps[kind].getLastRawValue()
+
+		for (let i = 0; i < this._stagedPackets[kind].length; i++) {
+			const weight = (this._stagedTimestamps[kind][i] - timestampsBase) / timestampsTotal
+			timestampsBase = this._stagedTimestamps[kind][i]
+
+			this._stagedPackets[kind][i] = packetsBase + packetsTotal * weight
+			packetsBase = this._stagedPackets[kind][i]
+
+			this._stagedPacketsLost[kind][i] = packetsLostBase + packetsLostTotal * weight
+			packetsLostBase = this._stagedPacketsLost[kind][i]
+
+			// Timestamps and round trip time are not distributed, as those
+			// values are properly updated even if the stats are stalled.
+		}
+	},
+
+	_commitStats(kind, packets, packetsLost, timestamp, roundTripTime) {
+		if (packets >= 0) {
+			this._packets[kind].add(packets)
+		}
+		if (packetsLost >= 0) {
+			this._packetsLost[kind].add(packetsLost)
+		}
+		if (packets >= 0 && packetsLost >= 0) {
+			// The packet stats are cumulative values, so the isolated values
+			// are got from the helper object.
+			// If there were no transmitted packets in the last stats the ratio
+			// is higher than 1 both to signal that and to force the quality
+			// towards "no transmitted data" faster, but not immediately.
+			// However, note that the quality will immediately change to "very
+			// bad quality".
+			let packetsLostRatio = 1.5
+			if (this._packets[kind].getLastRelativeValue() > 0) {
+				packetsLostRatio = this._packetsLost[kind].getLastRelativeValue() / this._packets[kind].getLastRelativeValue()
+			}
+			this._packetsLostRatio[kind].add(packetsLostRatio)
+		}
+		if (timestamp >= 0) {
+			this._timestamps[kind].add(timestamp)
+			this._timestampsForLogs[kind].add(timestamp)
+		}
+		if (packets >= 0 && timestamp >= 0) {
+			const elapsedSeconds = this._timestamps[kind].getLastRelativeValue() / 1000
+			// The packet stats are cumulative values, so the isolated
+			// values are got from the helper object.
+			const packetsPerSecond = this._packets[kind].getLastRelativeValue() / elapsedSeconds
+			this._packetsPerSecond[kind].add(packetsPerSecond)
+		}
+		if (roundTripTime !== undefined && roundTripTime >= 0) {
+			this._roundTripTime[kind].add(roundTripTime)
+		}
+	},
+
+	_calculateConnectionQualityAudio() {
+		return this._calculateConnectionQuality('audio')
+	},
+
+	_calculateConnectionQualityVideo() {
+		return this._calculateConnectionQuality('video')
+	},
+
+	_calculateConnectionQuality(kind) {
+		const packetsLostRatio = this._packetsLostRatio[kind]
+		const packetsPerSecond = this._packetsPerSecond[kind]
+		const roundTripTime = this._roundTripTime[kind]
+
 		if (!packetsLostRatio.hasEnoughData() || !packetsPerSecond.hasEnoughData()) {
 			return CONNECTION_QUALITY.UNKNOWN
 		}
 
+		// The stats might be in a temporary stall and the analysis is on hold
+		// until further stats arrive, so until that happens the last known
+		// state is returned again.
+		if (this._stagedPackets[kind].length > 0) {
+			return this._connectionQuality[kind]
+		}
+
 		const packetsLostRatioWeightedAverage = packetsLostRatio.getWeightedAverage()
 		if (packetsLostRatioWeightedAverage >= 1) {
+			this._logStats(kind, 'No transmitted data, packet lost ratio: ' + packetsLostRatioWeightedAverage)
+
 			return CONNECTION_QUALITY.NO_TRANSMITTED_DATA
 		}
 
@@ -518,6 +662,8 @@ PeerConnectionAnalyzer.prototype = {
 		// discarded to try to keep the playing rate in real time.
 		// Round trip time is measured in seconds.
 		if (roundTripTime.hasEnoughData() && roundTripTime.getWeightedAverage() > 1.5) {
+			this._logStats(kind, 'High round trip time: ' + roundTripTime.getWeightedAverage())
+
 			return CONNECTION_QUALITY.VERY_BAD
 		}
 
@@ -533,10 +679,14 @@ PeerConnectionAnalyzer.prototype = {
 		// with a threshold of 10 packets issues can be detected too for videos,
 		// although only once they can not be further downscaled.
 		if (packetsPerSecond.getWeightedAverage() < 10) {
+			this._logStats(kind, 'Low packets per second: ' + packetsPerSecond.getWeightedAverage())
+
 			return CONNECTION_QUALITY.VERY_BAD
 		}
 
 		if (packetsLostRatioWeightedAverage > 0.3) {
+			this._logStats(kind, 'High packet lost ratio: ' + packetsLostRatioWeightedAverage)
+
 			return CONNECTION_QUALITY.VERY_BAD
 		}
 
@@ -549,6 +699,21 @@ PeerConnectionAnalyzer.prototype = {
 		}
 
 		return CONNECTION_QUALITY.GOOD
+	},
+
+	_logStats(kind, message) {
+		const tag = 'PeerConnectionAnalyzer: ' + kind + ': '
+
+		if (message) {
+			console.debug(tag + message)
+		}
+
+		console.debug(tag + 'Packets: ' + this._packets[kind].toString())
+		console.debug(tag + 'Packets lost: ' + this._packetsLost[kind].toString())
+		console.debug(tag + 'Packets lost ratio: ' + this._packetsLostRatio[kind].toString())
+		console.debug(tag + 'Packets per second: ' + this._packetsPerSecond[kind].toString())
+		console.debug(tag + 'Round trip time: ' + this._roundTripTime[kind].toString())
+		console.debug(tag + 'Timestamps: ' + this._timestampsForLogs[kind].toString())
 	},
 
 }
