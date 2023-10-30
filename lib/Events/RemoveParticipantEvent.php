@@ -27,21 +27,18 @@ use OCA\Talk\Model\Session;
 use OCA\Talk\Participant;
 use OCA\Talk\Room;
 
+/**
+ * @deprecated
+ */
 class RemoveParticipantEvent extends ParticipantEvent {
-	protected string $reason;
-
-	/** @var Session[] */
-	protected array $sessions;
 
 	public function __construct(
 		Room $room,
 		Participant $participant,
-		string $reason,
-		array $sessions = [],
+		protected string $reason,
+		protected array $sessions = [],
 	) {
 		parent::__construct($room, $participant);
-		$this->reason = $reason;
-		$this->sessions = $sessions;
 	}
 
 	public function getReason(): string {

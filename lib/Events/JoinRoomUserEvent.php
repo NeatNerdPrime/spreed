@@ -26,24 +26,21 @@ namespace OCA\Talk\Events;
 use OCA\Talk\Room;
 use OCP\IUser;
 
+/**
+ * @deprecated
+ */
 class JoinRoomUserEvent extends RoomEvent {
-	protected IUser $user;
 	protected bool $cancelJoin;
-	protected string $password;
-	protected bool $passedPasswordProtection;
 
 
 	public function __construct(
 		Room $room,
-		IUser $user,
-		string $password,
-		bool $passedPasswordProtection,
+		protected IUser $user,
+		protected string $password,
+		protected bool $passedPasswordProtection,
 	) {
 		parent::__construct($room);
 		$this->cancelJoin = false;
-		$this->user = $user;
-		$this->password = $password;
-		$this->passedPasswordProtection = $passedPasswordProtection;
 	}
 
 	public function setCancelJoin(bool $cancelJoin): void {

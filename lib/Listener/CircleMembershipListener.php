@@ -33,26 +33,20 @@ use OCA\Talk\Participant;
 use OCA\Talk\Service\ParticipantService;
 use OCP\App\IAppManager;
 use OCP\EventDispatcher\Event;
-use OCP\EventDispatcher\IEventListener;
 use OCP\IGroupManager;
 use OCP\ISession;
 use OCP\IUser;
 use OCP\IUserManager;
 
-/**
- * @template-implements IEventListener<Event>
- */
 class CircleMembershipListener extends AMembershipListener {
-	private ISession $session;
-	private IUserManager $userManager;
 
 	public function __construct(
 		Manager $manager,
 		IAppManager $appManager,
 		IGroupManager $groupManager,
 		ParticipantService $participantService,
-		IUserManager $userManager,
-		ISession $session,
+		private IUserManager $userManager,
+		private ISession $session,
 	) {
 		parent::__construct(
 			$manager,
@@ -60,8 +54,6 @@ class CircleMembershipListener extends AMembershipListener {
 			$groupManager,
 			$participantService
 		);
-		$this->userManager = $userManager;
-		$this->session = $session;
 	}
 
 	public function handle(Event $event): void {
@@ -109,7 +101,8 @@ class CircleMembershipListener extends AMembershipListener {
 
 		$invitedBy = $newMember->getInvitedBy();
 		if ($invitedBy->getUserType() === Member::TYPE_USER && $invitedBy->getUserId() !== '') {
-			$this->session->set('talk-overwrite-actor', $invitedBy->getUserId());
+			$this->session->set('talk-overwrite-actor-id', $invitedBy->getUserId());
+			$this->session->set('talk-overwrite-actor-displayname', $invitedBy->getDisplayName());
 		} elseif ($invitedBy->getUserType() === Member::TYPE_APP && $invitedBy->getBasedOn()->getSource() === Member::APP_OCC) {
 			$this->session->set('talk-overwrite-actor-cli', 'cli');
 		}
@@ -117,7 +110,8 @@ class CircleMembershipListener extends AMembershipListener {
 		foreach ($userMembers as $userMember) {
 			$this->addNewMemberToRooms(array_values($roomsToAdd), $userMember);
 		}
-		$this->session->remove('talk-overwrite-actor');
+		$this->session->remove('talk-overwrite-actor-displayname');
+		$this->session->remove('talk-overwrite-actor-id');
 		$this->session->remove('talk-overwrite-actor-cli');
 	}
 
@@ -165,7 +159,8 @@ class CircleMembershipListener extends AMembershipListener {
 
 		$removedBy = $removedMember->getInvitedBy();
 		if ($removedBy->getUserType() === Member::TYPE_USER && $removedBy->getUserId() !== '') {
-			$this->session->set('talk-overwrite-actor', $removedBy->getUserId());
+			$this->session->set('talk-overwrite-actor-id', $removedBy->getUserId());
+			$this->session->set('talk-overwrite-actor-displayname', $removedBy->getDisplayName());
 		} elseif ($removedBy->getUserType() === Member::TYPE_APP && $removedBy->getUserId() === 'occ') {
 			$this->session->set('talk-overwrite-actor-cli', 'cli');
 		}
@@ -177,7 +172,8 @@ class CircleMembershipListener extends AMembershipListener {
 
 		$this->removeFromRoomsUnlessStillLinked($rooms, $user);
 
-		$this->session->remove('talk-overwrite-actor');
+		$this->session->remove('talk-overwrite-actor-displayname');
+		$this->session->remove('talk-overwrite-actor-id');
 		$this->session->remove('talk-overwrite-actor-cli');
 	}
 }

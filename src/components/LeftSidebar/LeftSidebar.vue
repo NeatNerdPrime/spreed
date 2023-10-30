@@ -3,7 +3,7 @@
   -
   - @author Marco Ambrosini <marcoambrosini@icloud.com>
   -
-  - @license GNU AGPL version 3 or any later version
+  - @license AGPL-3.0-or-later
   -
   - This program is free software: you can redistribute it and/or modify
   - it under the terms of the GNU Affero General Public License as
@@ -20,101 +20,238 @@
 -->
 
 <template>
-	<NcAppNavigation :aria-label="t('spreed', 'Conversation list')">
+	<NcAppNavigation ref="leftSidebar" :aria-label="t('spreed', 'Conversation list')">
 		<div class="new-conversation"
 			:class="{ 'new-conversation--scrolled-down': !isScrolledToTop }">
-			<SearchBox v-model="searchText"
-				class="conversations-search"
-				:is-searching="isSearching"
-				@input="debounceFetchSearchResults"
-				@submit="onInputEnter"
-				@keydown.enter.native="handleEnter"
-				@abort-search="abortSearch" />
-			<NewGroupConversation v-if="canStartConversations" />
+			<div class="conversations-search"
+				:class="{'conversations-search--expanded': isFocused}">
+				<SearchBox ref="searchBox"
+					:value.sync="searchText"
+					:is-focused.sync="isFocused"
+					:list="list"
+					@input="debounceFetchSearchResults"
+					@abort-search="abortSearch" />
+			</div>
+
+			<TransitionWrapper name="radial-reveal">
+				<!-- Filters -->
+				<NcActions v-show="searchText === ''"
+					:primary="isFiltered !== null"
+					class="filters"
+					:class="{'hidden-visually': isFocused}">
+					<template #icon>
+						<FilterIcon :size="15" />
+					</template>
+					<NcActionButton close-after-click
+						class="filter-actions__button"
+						:class="{'filter-actions__button--active': isFiltered === 'mentions'}"
+						@click="handleFilter('mentions')">
+						<template #icon>
+							<AtIcon :size="20" />
+						</template>
+						{{ t('spreed', 'Filter unread mentions') }}
+					</NcActionButton>
+
+					<NcActionButton close-after-click
+						class="filter-actions__button"
+						:class="{'filter-actions__button--active': isFiltered === 'unread'}"
+						@click="handleFilter('unread')">
+						<template #icon>
+							<MessageBadge :size="20" />
+						</template>
+						{{ t('spreed', 'Filter unread messages') }}
+					</NcActionButton>
+
+					<NcActionButton v-if="isFiltered"
+						close-after-click
+						class="filter-actions__clearbutton"
+						@click="handleFilter(null)">
+						<template #icon>
+							<FilterRemoveIcon :size="20" />
+						</template>
+						{{ t('spreed', 'Clear filters') }}
+					</NcActionButton>
+				</NcActions>
+			</TransitionWrapper>
+
+			<!-- Actions -->
+			<TransitionWrapper name="radial-reveal">
+				<NcActions v-show="searchText === ''"
+					class="actions"
+					:class="{'hidden-visually': isFocused}">
+					<template #icon>
+						<DotsVertical :size="20" />
+					</template>
+					<NcActionButton v-if="canStartConversations"
+						close-after-click
+						@click="showModalNewConversation">
+						<template #icon>
+							<Plus :size="20" />
+						</template>
+						{{ t('spreed', 'Create a new conversation') }}
+					</NcActionButton>
+
+					<NcActionButton v-if="!hasNoteToSelf"
+						close-after-click
+						@click="restoreNoteToSelfConversation">
+						<template #icon>
+							<Note :size="20" />
+						</template>
+						{{ t('spreed', 'New personal note') }}
+					</NcActionButton>
+
+					<NcActionButton close-after-click
+						@click="showModalListConversations">
+						<template #icon>
+							<List :size="20" />
+						</template>
+						{{ t('spreed', 'Join open conversations') }}
+					</NcActionButton>
+
+					<NcActionButton v-if="canModerateSipDialOut"
+						close-after-click
+						@click="showModalCallPhoneDialog">
+						<template #icon>
+							<Phone :size="20" />
+						</template>
+						{{ t('spreed', 'Call a phone number') }}
+					</NcActionButton>
+				</NcActions>
+			</TransitionWrapper>
+
+			<!-- All open conversations list -->
+			<OpenConversationsList ref="openConversationsList" />
+
+			<!-- New Conversation dialog-->
+			<NewGroupConversation ref="newGroupConversation" :can-moderate-sip-dial-out="canModerateSipDialOut" />
+
+			<!-- New Conversation dialog-->
+			<CallPhoneDialog ref="callPhoneDialog" />
 		</div>
+
 		<template #list>
 			<li ref="container" class="left-sidebar__list">
-				<ul ref="scroller"
-					class="scroller"
-					@scroll="debounceHandleScroll">
-					<NcAppNavigationCaption :class="{'hidden-visually': !isSearching}"
-						:title="t('spreed', 'Conversations')" />
-					<Conversation v-for="item of conversationsList"
-						:key="item.id"
-						:ref="`conversation-${item.token}`"
-						:item="item" />
-					<template v-if="!initialisedConversations">
-						<LoadingPlaceholder type="conversations" />
+				<ul class="h-100" :class="{'scroller': isSearching}">
+					<!-- Conversations List -->
+					<template v-if="!isSearching">
+						<NcEmptyContent v-if="initialisedConversations && filteredConversationsList.length === 0"
+							:name="emptyContentLabel"
+							:description="emptyContentDescription">
+							<template #icon>
+								<AtIcon v-if="isFiltered === 'mentions'" :size="64" />
+								<MessageBadge v-else-if="isFiltered === 'unread'" :size="64" />
+								<MessageOutline v-else :size="64" />
+							</template>
+							<template #action>
+								<NcButton v-if="isFiltered" @click="handleFilter(null)">
+									<template #icon>
+										<FilterRemoveIcon :size="20" />
+									</template>
+									{{ t('spreed', 'Clear filter') }}
+								</NcButton>
+							</template>
+						</NcEmptyContent>
+						<li v-show="filteredConversationsList.length > 0" ref="list" class="h-100">
+							<ConversationsListVirtual ref="scroller"
+								:conversations="filteredConversationsList"
+								:loading="!initialisedConversations"
+								class="scroller h-100"
+								@scroll.native="debounceHandleScroll" />
+						</li>
+						<NcButton v-if="!preventFindingUnread && lastUnreadMentionBelowViewportIndex !== null"
+							class="unread-mention-button"
+							type="primary"
+							@click="scrollBottomUnread">
+							{{ t('spreed', 'Unread mentions') }}
+						</NcButton>
 					</template>
-					<Hint v-else-if="searchText && !conversationsList.length"
-						:hint="t('spreed', 'No matches')" />
-					<template v-if="isSearching">
-						<template v-if="!listedConversationsLoading && searchResultsListedConversations.length > 0">
-							<NcAppNavigationCaption :title="t('spreed', 'Open conversations')" />
+
+					<!-- Search results -->
+					<template v-else-if="isSearching">
+						<!-- Create a new conversation -->
+						<NcListItem v-if="searchResultsConversationList.length === 0 && canStartConversations"
+							:name="t('spreed', 'Create a new conversation')"
+							data-nav-id="conversation_create_new"
+							@click="createConversation(searchText)">
+							<template #icon>
+								<ChatPlus :size="30" />
+							</template>
+							<template #subname>
+								{{ searchText }}
+							</template>
+						</NcListItem>
+
+						<!-- Search results: user's conversations -->
+						<NcAppNavigationCaption :name="t('spreed', 'Conversations')" />
+						<Conversation v-for="item of searchResultsConversationList"
+							:key="`conversation_${item.id}`"
+							:ref="`conversation-${item.token}`"
+							:item="item"
+							@click="abortSearch" />
+						<Hint v-if="searchResultsConversationList.length === 0" :hint="t('spreed', 'No matches found')" />
+
+						<!-- Search results: listed (open) conversations -->
+						<template v-if="!listedConversationsLoading && searchResultsListedConversations.length !== 0">
+							<NcAppNavigationCaption :name="t('spreed', 'Open conversations')" />
 							<Conversation v-for="item of searchResultsListedConversations"
-								:key="item.id"
+								:key="`open-conversation_${item.id}`"
 								:item="item"
-								is-search-result />
+								is-search-result
+								@click="abortSearch" />
 						</template>
+
+						<!-- Search results: users -->
 						<template v-if="searchResultsUsers.length !== 0">
-							<NcAppNavigationCaption :title="t('spreed', 'Users')" />
+							<NcAppNavigationCaption :name="t('spreed', 'Users')" />
 							<NcListItem v-for="item of searchResultsUsers"
-								:key="item.id"
-								:title="item.label"
+								:key="`user_${item.id}`"
+								:data-nav-id="`user_${item.id}`"
+								:name="item.label"
 								@click="createAndJoinConversation(item)">
 								<template #icon>
-									<ConversationIcon :item="iconData(item)"
-										:disable-menu="true" />
-								</template>
-							</NcListItem>
-						</template>
-						<template v-if="!showStartConversationsOptions">
-							<NcAppNavigationCaption v-if="searchResultsUsers.length === 0"
-								:title="t('spreed', 'Users')" />
-							<Hint v-if="contactsLoading" :hint="t('spreed', 'Loading')" />
-							<Hint v-else :hint="t('spreed', 'No search results')" />
-						</template>
-					</template>
-					<template v-if="showStartConversationsOptions">
-						<template v-if="searchResultsGroups.length !== 0">
-							<NcAppNavigationCaption :title="t('spreed', 'Groups')" />
-							<NcListItem v-for="item of searchResultsGroups"
-								:key="item.id"
-								:title="item.label"
-								@click="createAndJoinConversation(item)">
-								<template #icon>
-									<ConversationIcon :item="iconData(item)"
-										:disable-menu="true" />
+									<ConversationIcon :item="iconData(item)" />
 								</template>
 							</NcListItem>
 						</template>
 
-						<template v-if="searchResultsCircles.length !== 0">
-							<NcAppNavigationCaption :title="t('spreed', 'Circles')" />
-							<NcListItem v-for="item of searchResultsCircles"
-								:key="item.id"
-								:title="item.label"
-								@click="createAndJoinConversation(item)">
-								<template #icon>
-									<ConversationIcon :item="iconData(item)"
-										:disable-menu="true" />
-								</template>
-							</NcListItem>
+						<!-- Search results: new conversations -->
+						<template v-if="canStartConversations">
+							<!-- New conversations: Groups -->
+							<template v-if="searchResultsGroups.length !== 0">
+								<NcAppNavigationCaption :name="t('spreed', 'Groups')" />
+								<NcListItem v-for="item of searchResultsGroups"
+									:key="`group_${item.id}`"
+									:data-nav-id="`group_${item.id}`"
+									:name="item.label"
+									@click="createAndJoinConversation(item)">
+									<template #icon>
+										<ConversationIcon :item="iconData(item)" />
+									</template>
+								</NcListItem>
+							</template>
+
+							<!-- New conversations: Circles -->
+							<template v-if="searchResultsCircles.length !== 0">
+								<NcAppNavigationCaption :name="t('spreed', 'Circles')" />
+								<NcListItem v-for="item of searchResultsCircles"
+									:key="`circle_${item.id}`"
+									:data-nav-id="`circle_${item.id}`"
+									:name="item.label"
+									@click="createAndJoinConversation(item)">
+									<template #icon>
+										<ConversationIcon :item="iconData(item)" />
+									</template>
+								</NcListItem>
+							</template>
 						</template>
 
-						<NcAppNavigationCaption v-if="sourcesWithoutResults"
-							:title="sourcesWithoutResultsList" />
+						<!-- Search results: no results (yet) -->
+						<NcAppNavigationCaption v-if="sourcesWithoutResults" :name="sourcesWithoutResultsList" />
 						<Hint v-if="contactsLoading" :hint="t('spreed', 'Loading')" />
 						<Hint v-else :hint="t('spreed', 'No search results')" />
 					</template>
 				</ul>
 			</li>
-			<NcButton v-if="!preventFindingUnread && unreadNum > 0"
-				class="unread-mention-button"
-				type="primary"
-				@click="scrollBottomUnread">
-				{{ t('spreed', 'Unread mentions') }}
-			</NcButton>
 		</template>
 
 		<template #footer>
@@ -131,59 +268,123 @@
 
 <script>
 import debounce from 'debounce'
+import { ref } from 'vue'
 
+import AtIcon from 'vue-material-design-icons/At.vue'
+import ChatPlus from 'vue-material-design-icons/ChatPlus.vue'
+import DotsVertical from 'vue-material-design-icons/DotsVertical.vue'
+import FilterIcon from 'vue-material-design-icons/Filter.vue'
+import FilterRemoveIcon from 'vue-material-design-icons/FilterRemove.vue'
+import List from 'vue-material-design-icons/FormatListBulleted.vue'
+import MessageBadge from 'vue-material-design-icons/MessageBadge.vue'
+import Note from 'vue-material-design-icons/NoteEditOutline.vue'
+import Phone from 'vue-material-design-icons/Phone.vue'
+import Plus from 'vue-material-design-icons/Plus.vue'
+import MessageOutline from 'vue-material-design-icons/MessageOutline.vue'
+
+import { getCapabilities } from '@nextcloud/capabilities'
 import { showError } from '@nextcloud/dialogs'
 import { emit } from '@nextcloud/event-bus'
 import { loadState } from '@nextcloud/initial-state'
 
+import NcActionButton from '@nextcloud/vue/dist/Components/NcActionButton.js'
+import NcActions from '@nextcloud/vue/dist/Components/NcActions.js'
 import NcAppNavigation from '@nextcloud/vue/dist/Components/NcAppNavigation.js'
 import NcAppNavigationCaption from '@nextcloud/vue/dist/Components/NcAppNavigationCaption.js'
 import NcButton from '@nextcloud/vue/dist/Components/NcButton.js'
 import NcListItem from '@nextcloud/vue/dist/Components/NcListItem.js'
 import isMobile from '@nextcloud/vue/dist/Mixins/isMobile.js'
+import NcEmptyContent from '@nextcloud/vue/dist/Components/NcEmptyContent.js'
 
 import ConversationIcon from '../ConversationIcon.vue'
 import Hint from '../Hint.vue'
-import LoadingPlaceholder from '../LoadingPlaceholder.vue'
+import TransitionWrapper from '../TransitionWrapper.vue'
+import CallPhoneDialog from './CallPhoneDialog/CallPhoneDialog.vue'
 import Conversation from './ConversationsList/Conversation.vue'
+import ConversationsListVirtual from './ConversationsListVirtual.vue'
 import NewGroupConversation from './NewGroupConversation/NewGroupConversation.vue'
+import OpenConversationsList from './OpenConversationsList/OpenConversationsList.vue'
 import SearchBox from './SearchBox/SearchBox.vue'
 
+import { useArrowNavigation } from '../../composables/useArrowNavigation.js'
 import { CONVERSATION } from '../../constants.js'
-import arrowNavigation from '../../mixins/arrowNavigation.js'
+import BrowserStorage from '../../services/BrowserStorage.js'
 import {
+	createPrivateConversation,
+	fetchNoteToSelfConversation,
 	searchPossibleConversations,
 	searchListedConversations,
 } from '../../services/conversationsService.js'
 import { EventBus } from '../../services/EventBus.js'
+import { talkBroadcastChannel } from '../../services/talkBroadcastChannel.js'
 import CancelableRequest from '../../utils/cancelableRequest.js'
+import { requestTabLeadership } from '../../utils/requestTabLeadership.js'
+import { filterFunction } from '../../utils/conversation.js'
+
+const canModerateSipDialOut = getCapabilities()?.spreed?.features?.includes('sip-support-dialout')
+	&& getCapabilities()?.spreed?.config.call['sip-enabled']
+	&& getCapabilities()?.spreed?.config.call['sip-dialout-enabled']
+	&& getCapabilities()?.spreed?.config.call['can-enable-sip']
 
 export default {
-
 	name: 'LeftSidebar',
 
 	components: {
+		CallPhoneDialog,
 		NcAppNavigation,
 		NcAppNavigationCaption,
 		NcButton,
 		Hint,
 		SearchBox,
 		NewGroupConversation,
+		OpenConversationsList,
 		Conversation,
-		LoadingPlaceholder,
 		NcListItem,
 		ConversationIcon,
+		NcActions,
+		NcActionButton,
+		TransitionWrapper,
+		ConversationsListVirtual,
+		// Icons
+		AtIcon,
+		MessageBadge,
+		MessageOutline,
+		FilterIcon,
+		FilterRemoveIcon,
+		Phone,
+		Plus,
+		ChatPlus,
+		List,
+		DotsVertical,
+		Note,
+		NcEmptyContent,
 	},
 
 	mixins: [
-		arrowNavigation,
 		isMobile,
 	],
+
+	setup() {
+		const leftSidebar = ref(null)
+		const searchBox = ref(null)
+		const list = ref(null)
+
+		const { initializeNavigation, resetNavigation } = useArrowNavigation(leftSidebar, searchBox, '.list-item')
+
+		return {
+			initializeNavigation,
+			resetNavigation,
+			leftSidebar,
+			searchBox,
+			list,
+			canModerateSipDialOut,
+		}
+	},
 
 	data() {
 		return {
 			searchText: '',
-			searchResults: {},
+			searchResults: [],
 			searchResultsUsers: [],
 			searchResultsGroups: [],
 			searchResultsCircles: [],
@@ -198,37 +399,92 @@ export default {
 			// Keeps track of whether the conversation list is scrolled to the top or not
 			isScrolledToTop: true,
 			refreshTimer: null,
-			unreadNum: 0,
-			firstUnreadPos: 0,
+			/**
+			 * @type {number|null}
+			 */
+			lastUnreadMentionBelowViewportIndex: null,
 			preventFindingUnread: false,
 			roomListModifiedBefore: 0,
 			forceFullRoomListRefreshAfterXLoops: 0,
+			isFetchingConversations: false,
+			isCurrentTabLeader: false,
+			isFocused: false,
+			isFiltered: null,
+			isNavigating: false,
 		}
 	},
 
 	computed: {
 		conversationsList() {
-			let conversations = this.$store.getters.conversationsList
+			return this.$store.getters.conversationsList
+		},
 
-			if (this.searchText !== '') {
+		searchResultsConversationList() {
+			if (this.searchText !== '' || this.isFocused) {
 				const lowerSearchText = this.searchText.toLowerCase()
-				conversations = conversations.filter(conversation =>
+				return this.conversationsList.filter(conversation =>
 					conversation.displayName.toLowerCase().includes(lowerSearchText)
 					|| conversation.name.toLowerCase().includes(lowerSearchText)
 				)
+			} else {
+				return []
+			}
+		},
+
+		token() {
+			return this.$store.getters.getToken()
+		},
+
+		emptyContentLabel() {
+			switch (this.isFiltered) {
+			case 'mentions':
+			case 'unread':
+				return t('spreed', 'No matches found')
+			default:
+				return t('spreed', 'No conversations found')
+			}
+		},
+
+		emptyContentDescription() {
+			switch (this.isFiltered) {
+			case 'mentions':
+				return t('spreed', 'You have no unread mentions.')
+			case 'unread':
+				return t('spreed', 'You have no unread messages.')
+			default:
+				return ''
+			}
+		},
+
+		filteredConversationsList() {
+			if (this.isFocused) {
+				return this.conversationsList
+			}
+			// applying filters
+			if (this.isFiltered) {
+				let validConversationsCount = 0
+				const filteredConversations = this.conversationsList.filter((conversation) => {
+					const conversationIsValid = filterFunction(this.isFiltered, conversation)
+					if (conversationIsValid) {
+						validConversationsCount++
+					}
+					return conversationIsValid
+						|| conversation.hasCall
+						|| conversation.token === this.token
+				})
+				// return empty if it only includes the current conversation without any flags
+				return validConversationsCount === 0 && !this.isNavigating ? [] : filteredConversations
 			}
 
-			// FIXME: this modifies the original array,
-			// maybe should act on a copy or sort already within the store ?
-			return conversations.sort(this.sortConversations)
+			return this.conversationsList
 		},
 
 		isSearching() {
 			return this.searchText !== ''
 		},
 
-		showStartConversationsOptions() {
-			return this.isSearching && this.canStartConversations
+		hasNoteToSelf() {
+			return this.conversationsList.find(conversation => conversation.type === CONVERSATION.TYPE.NOTE_TO_SELF)
 		},
 
 		sourcesWithoutResults() {
@@ -266,28 +522,59 @@ export default {
 		},
 	},
 
+	watch: {
+		token(value) {
+			if (value && this.isFiltered) {
+				this.isNavigating = true
+			}
+		},
+	},
+
 	beforeMount() {
-		// After a conversation was created, the search filter is reset
-		EventBus.$once('resetSearchFilter', () => {
-			this.abortSearch()
+		// Restore last fetched conversations from browser storage,
+		// before updated ones come from server
+		this.restoreConversations()
+
+		requestTabLeadership().then(() => {
+			this.isCurrentTabLeader = true
+			this.fetchConversations()
+			// Refreshes the conversations list every 30 seconds
+			this.refreshTimer = window.setInterval(() => {
+				this.fetchConversations()
+			}, 30000)
 		})
 
-		this.fetchConversations()
+		talkBroadcastChannel.addEventListener('message', (event) => {
+			if (this.isCurrentTabLeader) {
+				switch (event.data.message) {
+				case 'force-fetch-all-conversations':
+					this.roomListModifiedBefore = 0
+					this.forceFullRoomListRefreshAfterXLoops = 10
+					this.debounceFetchConversations()
+					break
+				}
+			} else {
+				switch (event.data.message) {
+				case 'update-conversations':
+					this.$store.dispatch('patchConversations', {
+						conversations: event.data.conversations,
+						withRemoving: event.data.withRemoving,
+					})
+					break
+				case 'update-nextcloud-talk-hash':
+					this.$store.dispatch('setNextcloudTalkHash', event.data.hash)
+					break
+				}
+			}
+		})
 	},
 
 	mounted() {
-		// Refreshes the conversations every 30 seconds
-		this.refreshTimer = window.setInterval(() => {
-			if (!this.isFetchingConversations) {
-				this.fetchConversations()
-			}
-		}, 30000)
-
 		EventBus.$on('should-refresh-conversations', this.handleShouldRefreshConversations)
-		EventBus.$once('conversations-received', this.handleUnreadMention)
+		EventBus.$once('conversations-received', this.handleConversationsReceived)
 		EventBus.$on('route-change', this.onRouteChange)
-		EventBus.$on('joined-conversation', this.handleJoinedConversation)
-		this.mountArrowNavigation()
+		// Check filter status in previous sessions and apply if it exists
+		this.handleFilter(BrowserStorage.getItem('filterEnabled'))
 	},
 
 	beforeDestroy() {
@@ -308,27 +595,42 @@ export default {
 	},
 
 	methods: {
-		getFocusableList() {
-			return this.$el.querySelectorAll('li.acli_wrapper .acli')
+		showModalNewConversation() {
+			this.$refs.newGroupConversation.showModal()
 		},
-		focusCancel() {
-			return this.abortSearch()
+
+		showModalListConversations() {
+			this.$refs.openConversationsList.showModal()
 		},
-		isFocused() {
-			return this.isSearching
+
+		showModalCallPhoneDialog() {
+			this.$refs.callPhoneDialog.showModal()
 		},
+
+		handleFilter(filter) {
+			this.isFiltered = filter
+			// Store the active filter
+			if (filter) {
+				BrowserStorage.setItem('filterEnabled', filter)
+			} else {
+				BrowserStorage.removeItem('filterEnabled')
+			}
+			// Clear the search input once a filter is active
+			this.searchText = ''
+			// Initiate the navigation status
+			this.isNavigating = false
+		},
+
 		scrollBottomUnread() {
 			this.preventFindingUnread = true
-			this.$refs.container.scrollTo({
-				top: this.firstUnreadPos - 150,
-				behavior: 'smooth',
-			})
+			this.$refs.scroller.scrollToItem(this.lastUnreadMentionBelowViewportIndex)
 			setTimeout(() => {
 				this.handleUnreadMention()
 				this.preventFindingUnread = false
 			}, 500)
 		},
 		debounceFetchSearchResults: debounce(function() {
+			this.resetNavigation()
 			if (this.isSearching) {
 				this.fetchSearchResults()
 			}
@@ -390,6 +692,7 @@ export default {
 
 		async fetchSearchResults() {
 			await Promise.all([this.fetchPossibleConversations(), this.fetchListedConversations()])
+			this.initializeNavigation()
 		},
 
 		/**
@@ -405,14 +708,36 @@ export default {
 			if (item.source === 'users') {
 				// Create one-to-one conversation directly
 				const conversation = await this.$store.dispatch('createOneToOneConversation', item.id)
+				this.abortSearch()
 				this.$router.push({
 					name: 'conversation',
 					params: { token: conversation.token },
 				}).catch(err => console.debug(`Error while pushing the new conversation's route: ${err}`))
 			} else {
-				// For other types we start the conversation creation dialog
-				EventBus.$emit('new-group-conversation-dialog', item)
+				// For other types, show the modal directly
+				this.$refs.newGroupConversation.showModalForItem(item)
 			}
+		},
+
+		switchToConversation(conversation) {
+			this.$store.dispatch('addConversation', conversation)
+			this.abortSearch()
+			this.$router.push({
+				name: 'conversation',
+				params: { token: conversation.token },
+			}).catch(err => console.debug(`Error while pushing the new conversation's route: ${err}`))
+		},
+
+		async createConversation(name) {
+			const response = await createPrivateConversation(name)
+			const conversation = response.data.ocs.data
+			this.switchToConversation(conversation)
+		},
+
+		async restoreNoteToSelfConversation() {
+			const response = await fetchNoteToSelfConversation()
+			const conversation = response.data.ocs.data
+			this.switchToConversation(conversation)
 		},
 
 		hasOneToOneConversationWith(userId) {
@@ -422,6 +747,7 @@ export default {
 		// Reset the search text, therefore end the search operation.
 		abortSearch() {
 			this.searchText = ''
+			this.isFocused = false
 			if (this.cancelSearchPossibleConversations) {
 				this.cancelSearchPossibleConversations()
 			}
@@ -435,14 +761,6 @@ export default {
 			emit('show-settings')
 		},
 
-		sortConversations(conversation1, conversation2) {
-			if (conversation1.isFavorite !== conversation2.isFavorite) {
-				return conversation1.isFavorite ? -1 : 1
-			}
-
-			return conversation2.lastActivity - conversation1.lastActivity
-		},
-
 		/**
 		 * @param {object} [options] Options for conversation refreshing
 		 * @param {string} [options.token] The conversation token that got update
@@ -451,7 +769,14 @@ export default {
 		 */
 		async handleShouldRefreshConversations(options) {
 			if (options?.all === true) {
-				this.roomListModifiedBefore = 0
+				if (this.isCurrentTabLeader) {
+					this.roomListModifiedBefore = 0
+					this.forceFullRoomListRefreshAfterXLoops = 10
+				} else {
+					// Force leader tab to do a full fetch
+					talkBroadcastChannel.postMessage({ message: 'force-fetch-all-conversations' })
+					return
+				}
 			} else if (options?.token && options?.properties) {
 				await this.$store.dispatch('setConversationProperties', {
 					token: options.token,
@@ -463,12 +788,14 @@ export default {
 		},
 
 		debounceFetchConversations: debounce(function() {
-			if (!this.isFetchingConversations) {
-				this.fetchConversations()
-			}
+			this.fetchConversations()
 		}, 3000),
 
 		async fetchConversations() {
+			if (this.isFetchingConversations) {
+				return
+			}
+
 			this.isFetchingConversations = true
 			if (this.forceFullRoomListRefreshAfterXLoops === 0) {
 				this.roomListModifiedBefore = 0
@@ -501,9 +828,7 @@ export default {
 				 * Emits a global event that is used in App.vue to update the page title once the
 				 * ( if the current route is a conversation and once the conversations are received)
 				 */
-				EventBus.$emit('conversations-received', {
-					singleConversation: false,
-				})
+				EventBus.$emit('conversations-received', { singleConversation: false })
 				this.isFetchingConversations = false
 			} catch (error) {
 				console.debug('Error while fetching conversations: ', error)
@@ -511,65 +836,58 @@ export default {
 			}
 		},
 
+		async restoreConversations() {
+			try {
+				await this.$store.dispatch('restoreConversations')
+				this.initialisedConversations = true
+				EventBus.$emit('conversations-received', { singleConversation: false })
+			} catch (error) {
+				console.debug('Error while restoring conversations: ', error)
+			}
+		},
+
+		handleConversationsReceived() {
+			this.handleUnreadMention()
+			if (this.$route.params.token) {
+				this.scrollToConversation(this.$route.params.token)
+			}
+		},
+
 		// Checks whether the conversations list is scrolled all the way to the top
 		// or not
 		handleScroll() {
-			this.isScrolledToTop = this.$refs.container.scrollTop === 0
+			this.isScrolledToTop = this.$refs.scroller.$el.scrollTop === 0
 		},
-		elementIsAboveViewpoint(container, element) {
-			return element.offsetTop < container.scrollTop
-		},
-		elementIsBelowViewpoint(container, element) {
-			return element.offsetTop + element.offsetHeight > container.scrollTop + container.clientHeight
-		},
-		handleUnreadMention() {
-			this.unreadNum = 0
-			const unreadMentions = document.querySelectorAll('.unread-mention-conversation')
-			unreadMentions.forEach(x => {
-				if (this.elementIsBelowViewpoint(this.$refs.container, x)) {
-					if (this.unreadNum === 0) {
-						this.firstUnreadPos = x.offsetTop
-					}
-					this.unreadNum += 1
+
+		/**
+		 * Find position of the last unread conversation below viewport
+		 */
+		async handleUnreadMention() {
+			await this.$nextTick()
+
+			this.lastUnreadMentionBelowViewportIndex = null
+			const lastConversationInViewport = this.$refs.scroller.getLastItemInViewportIndex()
+			for (let i = this.filteredConversationsList.length - 1; i > lastConversationInViewport; i--) {
+				if (this.filteredConversationsList[i].unreadMention) {
+					this.lastUnreadMentionBelowViewportIndex = i
+					return
 				}
-			})
+			}
 		},
+
 		debounceHandleScroll: debounce(function() {
 			this.handleScroll()
 			this.handleUnreadMention()
 		}, 50),
 
-		// Route to the first search result
-		handleEnter() {
-			if (this?.conversationsList[0]?.token) {
-				this.$router.push({ name: 'conversation', params: { token: this.conversationsList[0].token } })
+		async scrollToConversation(token) {
+			await this.$nextTick()
+
+			if (!this.$refs.scroller) {
+				return
 			}
-		},
 
-		scrollToConversation(token) {
-			this.$nextTick(() => {
-				// In Vue 2 ref on v-for is always an array and its order is not guaranteed to match the order of v-for source
-				// See https://github.com/vuejs/vue/issues/4952#issuecomment-280661367
-				// Fixed in Vue 3
-				// Temp solution - use unique ref name for each v-for element. The value is still array but with one element
-				// TODO: Vue3: remove [0] here or use object for template refs
-				const conversation = this.$refs[`conversation-${token}`]?.[0].$el
-				if (!conversation) {
-					return
-				}
-
-				if (this.elementIsBelowViewpoint(this.$refs.container, conversation)) {
-					this.$refs.container.scrollTo({
-						top: conversation.offsetTop + conversation.offsetHeight * 2 - this.$refs.container.clientHeight,
-						behavior: 'smooth',
-					})
-				} else if (this.elementIsAboveViewpoint(this.$refs.container, conversation)) {
-					this.$refs.container.scrollTo({
-						top: conversation.offsetTop - conversation.offsetHeight,
-						behavior: 'smooth',
-					})
-				}
-			})
+			this.$refs.scroller.scrollToConversation(token)
 		},
 
 		onRouteChange({ from, to }) {
@@ -586,18 +904,15 @@ export default {
 				}
 			}
 			if (to.name === 'conversation') {
+				this.abortSearch()
 				this.$store.dispatch('joinConversation', { token: to.params.token })
+				this.scrollToConversation(to.params.token)
 			}
 			if (this.isMobile) {
 				emit('toggle-navigation', {
 					open: false,
 				})
 			}
-		},
-
-		handleJoinedConversation({ token }) {
-			this.abortSearch()
-			this.scrollToConversation(token)
 		},
 
 		iconData(item) {
@@ -618,20 +933,34 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-
-@import '../../assets/variables';
-
 .scroller {
-	padding: 0 4px 0 6px;
+	padding: 0 4px;
+}
+
+.h-100 {
+	height: 100%;
 }
 
 .new-conversation {
+	position: relative;
 	display: flex;
-	padding: 8px 0 8px 12px;
+	padding: 8px 4px 8px 12px;
 	align-items: center;
 
 	&--scrolled-down {
 		border-bottom: 1px solid var(--color-placeholder-dark);
+	}
+
+	.filters {
+		position: absolute;
+		top: 8px;
+		right: 56px;
+	}
+
+	.actions {
+		position: absolute;
+		top: 8px;
+		right: 8px;
 	}
 }
 
@@ -654,27 +983,55 @@ export default {
 }
 
 .conversations-search {
-	flex-grow: 1;
+	padding: 3px 0;
+	transition: all 0.15s ease;
+	z-index: 1;
+	// New conversation button width : 52 px
+	// Filters button width : 44 px
+	// Spacing : 3px + 1px
+	// Total : 100 px
+	width: calc(100% - 100px);
+	display: flex;
 
-	:deep(.input-field__input) {
-		border-radius: var(--border-radius-pill);
+	&--expanded {
+		width: calc(100% - 8px);
 	}
+
+	:deep(.input-field) {
+		margin-block-start: 0;
+	}
+}
+
+.filter-actions__button--active {
+	background-color: var(--color-primary-element-light);
+	border-radius: 6px;
+
+	:deep(.action-button__longtext) {
+		font-weight: bold;
+	}
+
+}
+
+:deep(.empty-content) {
+	text-align: center;
+	padding: 20% 10px 0;
 }
 
 .settings-button {
 	justify-content: flex-start !important;
 }
 
-:deep(.app-navigation ul) {
-	padding: 0 !important;
-}
-
-:deep(.app-navigation-toggle) {
-	top: 8px !important;
-	right: -6px !important;
-}
-
 :deep(.app-navigation__list) {
 	padding: 0 !important;
+}
+
+// FIXME upstream https://github.com/nextcloud-libraries/nextcloud-vue/issues/4625
+:deep(.list-item__wrapper--active) {
+	.list-item:hover,
+	.list-item:focus,
+	.list-item:focus-visible,
+	.list-item:active {
+		background-color: var(--color-primary-element-hover);
+	}
 }
 </style>

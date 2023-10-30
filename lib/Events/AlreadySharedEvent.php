@@ -27,19 +27,29 @@ declare(strict_types=1);
 namespace OCA\Talk\Events;
 
 use OCP\EventDispatcher\Event;
+use OCP\Share\IShare;
 
+/**
+ * @deprecated
+ */
 class AlreadySharedEvent extends Event {
-	private $subject;
-	public function __construct($subject = null) {
-		$this->subject = $subject;
+	public function __construct(
+		private IShare $share,
+	) {
+		parent::__construct();
 	}
 
 	/**
 	 * Getter for subject property.
 	 *
-	 * @return mixed
+	 * @return IShare
+	 * @deprecated
 	 */
-	public function getSubject() {
-		return $this->subject;
+	public function getSubject(): IShare {
+		return $this->share;
+	}
+
+	public function getShare(): IShare {
+		return $this->share;
 	}
 }

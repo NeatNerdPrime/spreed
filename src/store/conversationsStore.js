@@ -31,10 +31,12 @@ import {
 	PARTICIPANT,
 	WEBINAR,
 } from '../constants.js'
+import BrowserStorage from '../services/BrowserStorage.js'
 import {
 	makePublic,
 	makePrivate,
 	setSIPEnabled,
+	setRecordingConsent,
 	changeLobbyState,
 	changeReadOnlyState,
 	changeListable,
@@ -62,6 +64,7 @@ import {
 	startCallRecording,
 	stopCallRecording,
 } from '../services/recordingService.js'
+import { talkBroadcastChannel } from '../services/talkBroadcastChannel.js'
 
 const DUMMY_CONVERSATION = {
 	token: '',
@@ -84,11 +87,19 @@ const DUMMY_CONVERSATION = {
 	isDummyConversation: true,
 }
 
-const getDefaultState = () => {
-	return {
-		conversations: {
-		},
-	}
+/**
+ * Emit global event for user status update with the status from a 1-1 conversation
+ *
+ * @param {object} conversation - a 1-1 conversation
+ */
+function emitUserStatusUpdated(conversation) {
+	emit('user_status:status.updated', {
+		status: conversation.status,
+		message: conversation.statusMessage,
+		icon: conversation.statusIcon,
+		clearAt: conversation.statusClearAt,
+		userId: conversation.name,
+	})
 }
 
 const state = {
@@ -98,10 +109,24 @@ const state = {
 
 const getters = {
 	conversations: state => state.conversations,
-	conversationsList: state => Object.values(state.conversations).filter(conversation => {
-		// Filter out breakout rooms from left sidebar
-		return conversation.objectType !== 'room'
-	}),
+	/**
+	 * List of all conversations sorted by isFavorite and lastActivity without breakout rooms
+	 *
+	 * @param {object} state state
+	 * @return {object[]} sorted conversations list
+	 */
+	conversationsList: state => {
+		return Object.values(state.conversations)
+			// Filter out breakout rooms
+			.filter(conversation => conversation.objectType !== CONVERSATION.OBJECT_TYPE.BREAKOUT_ROOM)
+			// Sort by isFavorite and lastActivity
+			.sort((conversation1, conversation2) => {
+				if (conversation1.isFavorite !== conversation2.isFavorite) {
+					return conversation1.isFavorite ? -1 : 1
+				}
+				return conversation2.lastActivity - conversation1.lastActivity
+			})
+	},
 	/**
 	 * Get a conversation providing its token
 	 *
@@ -122,6 +147,17 @@ const mutations = {
 	addConversation(state, conversation) {
 		Vue.set(state.conversations, conversation.token, conversation)
 	},
+
+	/**
+	 * Update stored conversation
+	 *
+	 * @param {object} state the state
+	 * @param {object} conversation the new conversation object
+	 */
+	updateConversation(state, conversation) {
+		state.conversations[conversation.token] = conversation
+	},
+
 	/**
 	 * Deletes a conversation from the store.
 	 *
@@ -130,14 +166,6 @@ const mutations = {
 	 */
 	deleteConversation(state, token) {
 		Vue.delete(state.conversations, token)
-	},
-	/**
-	 * Resets the store to its original state
-	 *
-	 * @param {object} state current store state;
-	 */
-	purgeConversationsStore(state) {
-		Object.assign(state, getDefaultState())
 	},
 
 	setConversationDescription(state, { token, description }) {
@@ -203,24 +231,19 @@ const mutations = {
 
 const actions = {
 	/**
-	 * Add a conversation to the store and index the displayName.
+	 * Add a conversation to the store and index the displayName
 	 *
 	 * @param {object} context default store context;
 	 * @param {object} conversation the conversation;
 	 */
 	addConversation(context, conversation) {
-		context.commit('addConversation', conversation)
-
-		if (conversation.type === CONVERSATION.TYPE.ONE_TO_ONE && conversation.status) {
-			emit('user_status:status.updated', {
-				status: conversation.status,
-				message: conversation.statusMessage,
-				icon: conversation.statusIcon,
-				clearAt: conversation.statusClearAt,
-				userId: conversation.name,
-			})
+		if (conversation.type === CONVERSATION.TYPE.ONE_TO_ONE) {
+			emitUserStatusUpdated(conversation)
 		}
 
+		context.commit('addConversation', conversation)
+
+		// Add current user to a new conversation participants
 		let currentUser = {
 			uid: context.getters.getUserId(),
 			displayName: context.getters.getDisplayName(),
@@ -249,6 +272,48 @@ const actions = {
 	},
 
 	/**
+	 * Update conversation in store according to a new conversation object
+	 *
+	 * @param {object} context store context
+	 * @param {object} conversation the new conversation object
+	 * @return {boolean} whether the conversation was changed
+	 */
+	updateConversationIfHasChanged(context, conversation) {
+		const oldConversation = context.state.conversations[conversation.token]
+
+		// Update 1-1 conversation, if its status was changed
+		if (conversation.type === CONVERSATION.TYPE.ONE_TO_ONE
+			&& (oldConversation.status !== conversation.status
+				|| oldConversation.statusMessage !== conversation.statusMessage
+				|| oldConversation.statusIcon !== conversation.statusIcon
+				|| oldConversation.statusClearAt !== conversation.statusClearAt
+			)
+		) {
+			emitUserStatusUpdated(conversation)
+			context.commit('updateConversation', conversation)
+			return true
+		}
+
+		// Update conversation if lastActivity updated (e.g. new message came up, call state changed)
+		if (oldConversation.lastActivity !== conversation.lastActivity) {
+			context.commit('updateConversation', conversation)
+			return true
+		}
+
+		// Check if any property were changed (no properties except status-related supposed to be added or deleted)
+		for (const key of Object.keys(conversation)) {
+			// "lastMessage" is the only property with non-primitive (object) value and cannot be compared by ===
+			// If "lastMessage" was actually changed, it is already checked by "lastActivity"
+			if (key !== 'lastMessage' && oldConversation[key] !== conversation[key]) {
+				context.commit('updateConversation', conversation)
+				return true
+			}
+		}
+
+		return false
+	},
+
+	/**
 	 * Delete a conversation from the store.
 	 *
 	 * @param {object} context default store context;
@@ -258,6 +323,87 @@ const actions = {
 		// FIXME: rename to deleteConversationsFromStore or a better name
 		context.dispatch('deleteMessages', token)
 		context.commit('deleteConversation', token)
+	},
+
+	/**
+	 * Patch conversations:
+	 * - Add new conversations
+	 * - Remove conversations that are not in the new list
+	 * - Update existing conversations
+	 *
+	 * @param {object} context default store context
+	 * @param {object} payload the payload
+	 * @param {object[]} payload.conversations new conversations list
+	 * @param {boolean} payload.withRemoving whether to remove conversations that are not in the new list
+	 * @param {boolean} payload.withCaching whether to cache conversations to BrowserStorage with patch
+	 */
+	patchConversations(context, { conversations, withRemoving = false, withCaching = false }) {
+		let storeHasChanged = false
+
+		const currentConversations = context.state.conversations
+		const newConversations = Object.fromEntries(
+			conversations.map((conversation) => [conversation.token, conversation])
+		)
+
+		// Remove conversations that are not in the new list
+		if (withRemoving) {
+			for (const token of Object.keys(currentConversations)) {
+				if (newConversations[token] === undefined) {
+					context.dispatch('deleteConversation', token)
+					storeHasChanged = true
+				}
+			}
+		}
+
+		// Add new conversations and patch existing ones
+		for (const [token, newConversation] of Object.entries(newConversations)) {
+			if (currentConversations[token] === undefined) {
+				context.dispatch('addConversation', newConversation)
+				storeHasChanged = true
+			} else {
+				const conversationHasChanged = context.dispatch('updateConversationIfHasChanged', newConversation)
+				storeHasChanged = conversationHasChanged || storeHasChanged
+			}
+		}
+
+		if (withCaching && storeHasChanged) {
+			context.dispatch('cacheConversations')
+		}
+	},
+
+	/**
+	 * Restores conversations from BrowserStorage and add them to the store state
+	 *
+	 * @param {object} context default store context
+	 */
+	restoreConversations(context) {
+		const cachedConversations = BrowserStorage.getItem('cachedConversations')
+		if (!cachedConversations?.length) {
+			return
+		}
+
+		context.dispatch('patchConversations', {
+			conversations: JSON.parse(cachedConversations),
+			withRemoving: true,
+		})
+
+		console.debug('Conversations have been restored from BrowserStorage')
+	},
+
+	/**
+	 * Save conversations to BrowserStorage from the store state
+	 *
+	 * @param {object} context default store context
+	 */
+	cacheConversations(context) {
+		const conversations = context.getters.conversationsList
+		if (!conversations.length) {
+			return
+		}
+
+		const serializedConversations = JSON.stringify(conversations)
+		BrowserStorage.setItem('cachedConversations', serializedConversations)
+		console.debug(`Conversations were saved to BrowserStorage. Estimated object size: ${(serializedConversations.length / 1024).toFixed(2)} kB`)
 	},
 
 	/**
@@ -271,6 +417,7 @@ const actions = {
 		await deleteConversation(token)
 		// upon success, also delete from store
 		await context.dispatch('deleteConversation', token)
+		talkBroadcastChannel.postMessage({ message: 'force-fetch-all-conversations' })
 	},
 
 	/**
@@ -291,16 +438,6 @@ const actions = {
 				t('spreed', 'Error while clearing conversation history'),
 				error)
 		}
-	},
-
-	/**
-	 * Resets the store to its original state.
-	 *
-	 * @param {object} context default store context;
-	 */
-	purgeConversationsStore(context) {
-		// TODO: also purge messages ??
-		context.commit('purgeConversationsStore')
 	},
 
 	async toggleGuests({ commit, getters }, { token, allowGuests }) {
@@ -429,6 +566,18 @@ const actions = {
 		commit('addConversation', conversation)
 	},
 
+	async setRecordingConsent({ commit, getters }, { token, state }) {
+		if (!getters.conversations[token]) {
+			return
+		}
+
+		await setRecordingConsent(token, state)
+
+		const conversation = Object.assign({}, getters.conversations[token], { recordingConsent: state })
+
+		commit('addConversation', conversation)
+	},
+
 	async setConversationProperties({ commit, getters }, { token, properties }) {
 		if (!getters.conversations[token]) {
 			return
@@ -444,7 +593,7 @@ const actions = {
 			return
 		}
 
-		commit('updateUnreadMessages', { token, unreadMessages: 0, unreadMention: false })
+		commit('updateUnreadMessages', { token, unreadMessages: 0, unreadMention: false, unreadMentionDirect: false })
 	},
 
 	async markConversationUnread({ commit, dispatch, getters }, { token }) {
@@ -645,11 +794,19 @@ const actions = {
 
 			const response = await fetchConversations(options)
 			dispatch('updateTalkVersionHash', response)
-			if (modifiedSince === 0) {
-				dispatch('purgeConversationsStore')
-			}
-			response.data.ocs.data.forEach(conversation => {
-				dispatch('addConversation', conversation)
+
+			dispatch('patchConversations', {
+				conversations: response.data.ocs.data,
+				// Remove only when fetching a full list, not fresh updates
+				withRemoving: modifiedSince === 0,
+				withCaching: true,
+			})
+
+			// Inform other tabs about successful fetch
+			talkBroadcastChannel.postMessage({
+				message: 'update-conversations',
+				conversations: response.data.ocs.data,
+				withRemoving: modifiedSince === 0,
 			})
 			return response
 		} catch (error) {

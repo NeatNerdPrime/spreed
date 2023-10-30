@@ -33,6 +33,18 @@ jest.mock('extendable-media-recorder-wav-encoder', () => ({
 	connect: jest.fn(),
 }))
 
+jest.mock('@nextcloud/initial-state', () => ({
+	loadState: jest.fn().mockImplementation((app, key, fallback) => {
+		return fallback
+	}),
+}))
+
+window.IntersectionObserver = jest.fn(() => ({
+	observe: jest.fn(),
+	unobserve: jest.fn(),
+	disconnect: jest.fn(),
+}))
+
 global.appName = 'spreed'
 
 global.OC = {
@@ -78,6 +90,39 @@ global.OCP = {
 	},
 }
 global.IS_DESKTOP = false
+
+/**
+ * Polyfill for Blob.prototype.arrayBuffer
+ * Required as jsdom breaks Nodejs's native Blob
+ *
+ * @see https://github.com/jsdom/jsdom/issues/2555
+ */
+function myArrayBuffer() {
+	// this: File or Blob
+	return new Promise((resolve) => {
+		const fr = new FileReader()
+		fr.onload = () => {
+			resolve(fr.result)
+		}
+		fr.readAsArrayBuffer(this)
+	})
+}
+
+global.Blob.prototype.arrayBuffer = Blob.prototype.arrayBuffer || myArrayBuffer
+
+global.BroadcastChannel = jest.fn(() => ({
+	postMessage: jest.fn(),
+	addEventListener: jest.fn(),
+}))
+
+const originalConsoleError = console.error
+console.error = function(error) {
+	if (error?.message?.includes('Could not parse CSS stylesheet')) {
+		console.debug(error?.message)
+	} else {
+		originalConsoleError(error)
+	}
+}
 
 // Work around missing "URL.createObjectURL" (which is used in the code but not
 // relevant for the tests) in jsdom: https://github.com/jsdom/jsdom/issues/1721

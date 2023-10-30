@@ -25,13 +25,14 @@ namespace OCA\Talk\Events;
 
 use OCA\Talk\Model\Message;
 
+/**
+ * @deprecated
+ */
 class ChatMessageEvent extends ChatEvent {
-	protected Message $message;
-
-
-	public function __construct(Message $message) {
+	public function __construct(
+		protected Message $message,
+	) {
 		parent::__construct($message->getRoom(), $message->getComment());
-		$this->message = $message;
 	}
 
 	public function getMessage(): Message {

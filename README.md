@@ -13,9 +13,9 @@
 
 ## ✨ Why is this so awesome?
 
-* 💬 **Chat** Nextcloud Talk comes with a simple text chat, allowing you to share or upload files from your Nextcloud Files app or local device and mentioning other participants.
+* 💬 **Chat** Nextcloud Talk comes with a simple text chat, allowing you to share or upload files from your Nextcloud Files app or local device and mention other participants.
 * 👥 **Private, group, public and password protected calls!** Invite someone, a whole group or send a public link to invite to a call.
-* 💻 **Screen sharing!** Share your screen with participants of your call.
+* 💻 **Screen sharing!** Share your screen with the participants of your call.
 * 🚀 **Integration with other Nextcloud apps** like Files, Calendar, User status, Dashboard, Flow, Maps, Smart picker, Contacts, Deck, and many more.
 * 🎡 **We’re not reinventing the wheel!** Based on the great [simpleWebRTC](https://github.com/simplewebrtc/SimpleWebRTC) library.
 * 🌉 **Sync with other chat solutions** With [Matterbridge](https://github.com/42wim/matterbridge/) being integrated in Talk, you can easily sync a lot of other chat solutions to Nextcloud Talk and vice-versa.
@@ -32,13 +32,14 @@ If you have suggestions or problems, please [open an issue](https://github.com/n
 * **[📙 User documentation](https://docs.nextcloud.com/server/latest/user_manual/en/talk/index.html)**
 * **[💻 Server system requirements](https://nextcloud-talk.readthedocs.io/en/latest/system-requirements/)**
 * **[📗 Administration documentation](https://nextcloud-talk.readthedocs.io/en/latest/#administration-documentation)**
+* **[🤖 Bots/Webhooks documentation](https://nextcloud-talk.readthedocs.io/en/latest/bots/)**
 * **[⚙️ API documentation](https://nextcloud-talk.readthedocs.io/en/latest/#talk-api)**
 
 ### 📦 Installing for Production
 
 Nextcloud Talk is really easy to install. You just need to enable the app from the [Nextcloud App Store](https://apps.nextcloud.com/apps/spreed) and everything will work out of the box.
 
-There are some scenarios (users behind strict firewalls / symmetric NATs) where a TURN server is needed. That's a bit more tricky to install. You can [find instructions in our documentation](https://nextcloud-talk.readthedocs.io/en/latest/TURN/) and the team behind the Nextcloud VM has developed a script which takes care of everything for you ([vm-talk.sh](https://github.com/nextcloud/vm/blob/master/apps/talk.sh)). The script is tested on the recent Ubuntu Server LTS. Please keep in mind that it's developed for the VM specifically and any issues should be reported in that repository, not here.
+There are some scenarios (users behind strict firewalls / symmetric NATs) where a TURN server is needed. That's a bit more tricky to install. You can [find instructions in our documentation](https://nextcloud-talk.readthedocs.io/en/latest/TURN/) and the team behind the Nextcloud VM has developed a script that takes care of everything for you ([vm-talk.sh](https://github.com/nextcloud/vm/blob/master/apps/talk.sh)). The script is tested on the recent Ubuntu Server LTS. Please keep in mind that it's developed for the VM specifically and any issues should be reported in that repository, not here.
 
 Here's a short [video](https://youtu.be/KdTsWIy4eN0) on how it's done.
 

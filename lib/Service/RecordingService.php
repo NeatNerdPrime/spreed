@@ -44,6 +44,7 @@ use OCP\Files\IMimeTypeDetector;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
 use OCP\Files\NotPermittedException;
+use OCP\IConfig;
 use OCP\Notification\IManager;
 use OCP\PreConditionNotMetException;
 use OCP\Share\IManager as ShareManager;
@@ -52,6 +53,10 @@ use OCP\SpeechToText\ISpeechToTextManager;
 use Psr\Log\LoggerInterface;
 
 class RecordingService {
+	public const CONSENT_REQUIRED_NO = 0;
+	public const CONSENT_REQUIRED_YES = 1;
+	public const CONSENT_REQUIRED_OPTIONAL = 2;
+
 	public const DEFAULT_ALLOWED_RECORDING_FORMATS = [
 		'audio/ogg' => ['ogg'],
 		'video/ogg' => ['ogv'],
@@ -76,6 +81,7 @@ class RecordingService {
 		protected Manager $roomManager,
 		protected ITimeFactory $timeFactory,
 		protected Config $config,
+		protected IConfig $serverConfig,
 		protected RoomService $roomService,
 		protected ShareManager $shareManager,
 		protected ChatManager $chatManager,
@@ -145,8 +151,13 @@ class RecordingService {
 			throw new InvalidArgumentException('owner_permission');
 		}
 
+		if ($this->serverConfig->getAppValue('spreed', 'call_recording_transcription', 'no') === 'no') {
+			return;
+		}
+
 		try {
 			$this->speechToTextManager->scheduleFileTranscription($fileNode, $owner, Application::APP_ID);
+			$this->logger->debug('Scheduled transcription of call recording');
 		} catch (PreConditionNotMetException $e) {
 			// No Speech-to-text provider installed
 			$this->logger->debug('Could not generate transcript of call recording', ['exception' => $e]);

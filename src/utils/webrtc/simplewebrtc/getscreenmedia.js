@@ -1,4 +1,4 @@
-/* global module, chrome */
+/* global chrome */
 
 // getScreenMedia helper by @HenrikJoreteg
 const getUserMedia = function(constraints, callback) {
@@ -23,7 +23,13 @@ const getUserMedia = function(constraints, callback) {
 // cache for constraints and callback
 const cache = {}
 
-module.exports = function(mode, constraints, cb) {
+/**
+ *
+ * @param {string} mode screen or window
+ * @param {object} constraints media constraints
+ * @param {Function} cb callback
+ */
+export default function(mode, constraints, cb) {
 	const hasConstraints = arguments.length === 3
 	const callback = hasConstraints ? cb : constraints
 	let error

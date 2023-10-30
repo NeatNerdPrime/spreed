@@ -24,12 +24,12 @@ declare(strict_types=1);
  */
 
 $requirements = [
-	'apiVersion' => 'v1',
+	'apiVersion' => '(v1)',
 	'token' => '[a-z0-9]{4,30}',
 ];
 
 $requirementsWithMessageId = [
-	'apiVersion' => 'v1',
+	'apiVersion' => '(v1)',
 	'token' => '[a-z0-9]{4,30}',
 	'messageId' => '[0-9]+',
 ];
@@ -46,6 +46,12 @@ return [
 		['name' => 'Chat#deleteMessage', 'url' => '/api/{apiVersion}/chat/{token}/{messageId}', 'verb' => 'DELETE', 'requirements' => $requirementsWithMessageId],
 		/** @see \OCA\Talk\Controller\ChatController::getMessageContext() */
 		['name' => 'Chat#getMessageContext', 'url' => '/api/{apiVersion}/chat/{token}/{messageId}/context', 'verb' => 'GET', 'requirements' => $requirementsWithMessageId],
+		/** @see \OCA\Talk\Controller\ChatController::setReminder() */
+		['name' => 'Chat#setReminder', 'url' => '/api/{apiVersion}/chat/{token}/{messageId}/reminder', 'verb' => 'POST', 'requirements' => $requirementsWithMessageId],
+		/** @see \OCA\Talk\Controller\ChatController::getReminder() */
+		['name' => 'Chat#getReminder', 'url' => '/api/{apiVersion}/chat/{token}/{messageId}/reminder', 'verb' => 'GET', 'requirements' => $requirementsWithMessageId],
+		/** @see \OCA\Talk\Controller\ChatController::deleteReminder() */
+		['name' => 'Chat#deleteReminder', 'url' => '/api/{apiVersion}/chat/{token}/{messageId}/reminder', 'verb' => 'DELETE', 'requirements' => $requirementsWithMessageId],
 		/** @see \OCA\Talk\Controller\ChatController::setReadMarker() */
 		['name' => 'Chat#setReadMarker', 'url' => '/api/{apiVersion}/chat/{token}/read', 'verb' => 'POST', 'requirements' => $requirements],
 		/** @see \OCA\Talk\Controller\ChatController::markUnread() */

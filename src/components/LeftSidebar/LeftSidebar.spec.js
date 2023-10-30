@@ -13,11 +13,9 @@ import router from '../../__mocks__/router.js'
 import { searchPossibleConversations, searchListedConversations } from '../../services/conversationsService.js'
 import { EventBus } from '../../services/EventBus.js'
 import storeConfig from '../../store/storeConfig.js'
-import { findNcListItems } from '../../test-helpers.js'
+import { findNcListItems, findNcActionButton } from '../../test-helpers.js'
+import { requestTabLeadership } from '../../utils/requestTabLeadership.js'
 
-jest.mock('@nextcloud/initial-state', () => ({
-	loadState: jest.fn(),
-}))
 jest.mock('../../services/conversationsService', () => ({
 	searchPossibleConversations: jest.fn(),
 	searchListedConversations: jest.fn(),
@@ -47,7 +45,8 @@ describe('LeftSidebar.vue', () => {
 				// to prevent user status fetching
 				NcAvatar: true,
 				// to prevent complex dialog logic
-				NewGroupConversation: true,
+				NcActions: true,
+				NcModal: true,
 			},
 		})
 	}
@@ -130,11 +129,9 @@ describe('LeftSidebar.vue', () => {
 
 			const wrapper = mountComponent()
 
-			expect(fetchConversationsAction).toHaveBeenCalledWith(expect.anything(), expect.anything())
-			expect(conversationsListMock).toHaveBeenCalled()
+			await requestTabLeadership()
 
-			const conversationListItems = wrapper.findAllComponents({ name: 'Conversation' })
-			expect(conversationListItems).toHaveLength(conversationsList.length)
+			expect(fetchConversationsAction).toHaveBeenCalledWith(expect.anything(), expect.anything())
 
 			expect(wrapper.vm.searchText).toBe('')
 			expect(wrapper.vm.initialisedConversations).toBeFalsy()
@@ -145,9 +142,12 @@ describe('LeftSidebar.vue', () => {
 			await flushPromises()
 
 			expect(wrapper.vm.initialisedConversations).toBeTruthy()
-			expect(conversationListItems.at(0).props('item')).toStrictEqual(conversationsList[2])
-			expect(conversationListItems.at(1).props('item')).toStrictEqual(conversationsList[0])
-			expect(conversationListItems.at(2).props('item')).toStrictEqual(conversationsList[1])
+
+			const conversationListItems = wrapper.findAllComponents({ name: 'Conversation' })
+			expect(conversationListItems).toHaveLength(conversationsList.length)
+			expect(conversationListItems.at(0).props('item')).toStrictEqual(conversationsList[0])
+			expect(conversationListItems.at(1).props('item')).toStrictEqual(conversationsList[1])
+			expect(conversationListItems.at(2).props('item')).toStrictEqual(conversationsList[2])
 
 			expect(conversationsReceivedEvent).toHaveBeenCalledWith({
 				singleConversation: false,
@@ -156,6 +156,9 @@ describe('LeftSidebar.vue', () => {
 
 		test('re-fetches conversations every 30 seconds', async () => {
 			const wrapper = mountComponent()
+
+			await requestTabLeadership()
+
 			expect(wrapper.exists()).toBeTruthy()
 			expect(fetchConversationsAction).toHaveBeenCalled()
 
@@ -174,6 +177,9 @@ describe('LeftSidebar.vue', () => {
 
 		test('re-fetches conversations when receiving bus event', async () => {
 			const wrapper = mountComponent()
+
+			await requestTabLeadership()
+
 			expect(wrapper.exists()).toBeTruthy()
 			expect(fetchConversationsAction).toHaveBeenCalled()
 
@@ -281,14 +287,14 @@ describe('LeftSidebar.vue', () => {
 		 * @param {object} loadStateSettingsOverride Allows to override some properties
 		 */
 		async function testSearch(searchTerm, possibleResults, listedResults, loadStateSettingsOverride) {
-			searchPossibleConversations.mockResolvedValueOnce({
+			searchPossibleConversations.mockResolvedValue({
 				data: {
 					ocs: {
 						data: possibleResults,
 					},
 				},
 			})
-			searchListedConversations.mockResolvedValueOnce({
+			searchListedConversations.mockResolvedValue({
 				data: {
 					ocs: {
 						data: listedResults,
@@ -302,8 +308,9 @@ describe('LeftSidebar.vue', () => {
 
 			const wrapper = mountComponent()
 
+			await requestTabLeadership()
+
 			expect(fetchConversationsAction).toHaveBeenCalledWith(expect.anything(), expect.anything())
-			expect(conversationsListMock).toHaveBeenCalled()
 
 			const searchBox = wrapper.findComponent({ name: 'SearchBox' })
 			expect(searchBox.exists()).toBeTruthy()
@@ -312,7 +319,6 @@ describe('LeftSidebar.vue', () => {
 			await flushPromises()
 
 			await searchBox.find('input[type="text"]').setValue(searchTerm)
-			expect(searchBox.props('isSearching')).toBeTruthy()
 
 			await flushPromises()
 
@@ -337,7 +343,7 @@ describe('LeftSidebar.vue', () => {
 				expect(captionListItems.exists()).toBeTruthy()
 				expect(captionListItems).toHaveLength(captionList.length)
 				captionList.forEach((caption, index) => {
-					expect(captionListItems.at(index).props('title')).toStrictEqual(caption)
+					expect(captionListItems.at(index).props('name')).toStrictEqual(caption)
 				})
 
 				// Check all conversations
@@ -357,7 +363,7 @@ describe('LeftSidebar.vue', () => {
 				expect(resultsListItems.exists()).toBeTruthy()
 				expect(resultsListItems).toHaveLength(resultsList.length)
 				resultsList.forEach((result, index) => {
-					expect(resultsListItems.at(index).props('title')).toStrictEqual(result)
+					expect(resultsListItems.at(index).props('name')).toStrictEqual(result)
 				})
 			})
 
@@ -378,7 +384,7 @@ describe('LeftSidebar.vue', () => {
 				expect(captionListItems.exists()).toBeTruthy()
 				expect(captionListItems).toHaveLength(captionList.length)
 				captionList.forEach((caption, index) => {
-					expect(captionListItems.at(index).props('title')).toStrictEqual(caption)
+					expect(captionListItems.at(index).props('name')).toStrictEqual(caption)
 				})
 
 				// Check all conversations
@@ -398,7 +404,7 @@ describe('LeftSidebar.vue', () => {
 				expect(resultsListItems.exists()).toBeTruthy()
 				expect(resultsListItems).toHaveLength(resultsList.length)
 				resultsList.forEach((result, index) => {
-					expect(resultsListItems.at(index).props('title')).toStrictEqual(result)
+					expect(resultsListItems.at(index).props('name')).toStrictEqual(result)
 				})
 			})
 
@@ -419,7 +425,7 @@ describe('LeftSidebar.vue', () => {
 				expect(captionListItems.exists()).toBeTruthy()
 				expect(captionListItems).toHaveLength(captionList.length)
 				captionList.forEach((caption, index) => {
-					expect(captionListItems.at(index).props('title')).toStrictEqual(caption)
+					expect(captionListItems.at(index).props('name')).toStrictEqual(caption)
 				})
 
 				// Check all conversations
@@ -439,7 +445,7 @@ describe('LeftSidebar.vue', () => {
 				expect(resultsListItems.exists()).toBeTruthy()
 				expect(resultsListItems).toHaveLength(resultsList.length)
 				resultsList.forEach((result, index) => {
-					expect(resultsListItems.at(index).props('title')).toStrictEqual(result)
+					expect(resultsListItems.at(index).props('name')).toStrictEqual(result)
 				})
 			})
 		})
@@ -466,14 +472,14 @@ describe('LeftSidebar.vue', () => {
 				expect(captionsEls.exists()).toBeTruthy()
 				if (listedResults.length > 0) {
 					expect(captionsEls.length).toBeGreaterThan(2)
-					expect(captionsEls.at(0).props('title')).toBe('Conversations')
-					expect(captionsEls.at(1).props('title')).toBe('Open conversations')
+					expect(captionsEls.at(0).props('name')).toBe('Conversations')
+					expect(captionsEls.at(1).props('name')).toBe('Open conversations')
 				} else {
 					expect(captionsEls.length).toBeGreaterThan(1)
-					expect(captionsEls.at(0).props('title')).toBe('Conversations')
+					expect(captionsEls.at(0).props('name')).toBe('Conversations')
 				}
 				// last dynamic caption for "No search results"
-				expect(captionsEls.at(-1).props('title')).toBe(expectedCaption)
+				expect(captionsEls.at(-1).props('name')).toBe(expectedCaption)
 
 				return wrapper
 			}
@@ -611,9 +617,6 @@ describe('LeftSidebar.vue', () => {
 			})
 
 			test('shows group conversation dialog when clicking search result', async () => {
-				const eventHandler = jest.fn()
-				EventBus.$once('new-group-conversation-dialog', eventHandler)
-
 				const wrapper = await testSearch(SEARCH_TERM, [...groupsResults], [])
 
 				const resultsListItems = findNcListItems(wrapper, groupsResults.map(item => item.label))
@@ -621,7 +624,13 @@ describe('LeftSidebar.vue', () => {
 				expect(resultsListItems).toHaveLength(groupsResults.length)
 
 				await resultsListItems.at(1).findAll('a').trigger('click')
-				expect(eventHandler).toHaveBeenCalledWith(groupsResults[1])
+				// Wait for the component to render
+				await wrapper.vm.$nextTick()
+				const ncModalComponent = wrapper.findComponent({ name: 'NcModal' })
+				expect(ncModalComponent.exists()).toBeTruthy()
+
+				const input = ncModalComponent.findComponent({ name: 'NcTextField', ref: 'conversationName' })
+				expect(input.props('value')).toBe(groupsResults[1].label)
 
 				// nothing created yet
 				expect(createOneToOneConversationAction).not.toHaveBeenCalled()
@@ -629,8 +638,6 @@ describe('LeftSidebar.vue', () => {
 			})
 
 			test('shows circles conversation dialog when clicking search result', async () => {
-				const eventHandler = jest.fn()
-				EventBus.$once('new-group-conversation-dialog', eventHandler)
 
 				const wrapper = await testSearch(SEARCH_TERM, [...circlesResults], [])
 
@@ -639,7 +646,13 @@ describe('LeftSidebar.vue', () => {
 				expect(resultsListItems).toHaveLength(circlesResults.length)
 
 				await resultsListItems.at(1).findAll('a').trigger('click')
-				expect(eventHandler).toHaveBeenCalledWith(circlesResults[1])
+
+				// Wait for the component to render
+				await wrapper.vm.$nextTick()
+				const ncModalComponent = wrapper.findComponent({ name: 'NcModal' })
+				expect(ncModalComponent.exists()).toBeTruthy()
+				const input = ncModalComponent.findComponent({ name: 'NcTextField', ref: 'conversationName' })
+				expect(input.props('value')).toBe(circlesResults[1].label)
 
 				// nothing created yet
 				expect(createOneToOneConversationAction).not.toHaveBeenCalled()
@@ -701,15 +714,16 @@ describe('LeftSidebar.vue', () => {
 			loadStateSettings.start_conversations = true
 
 			const wrapper = mountComponent()
-			const buttonEl = wrapper.findComponent({ name: 'NewGroupConversation' })
-			expect(buttonEl.exists()).toBeTruthy()
+			const newConversationbutton = findNcActionButton(wrapper, 'Create a new conversation')
+			expect(newConversationbutton.exists()).toBeTruthy()
+
 		})
 		test('does not show new conversation button if user cannot start conversations', () => {
 			loadStateSettings.start_conversations = false
 
 			const wrapper = mountComponent()
-			const buttonEl = wrapper.findComponent({ name: 'NewGroupConversation' })
-			expect(buttonEl.exists()).toBeFalsy()
+			const newConversationbutton = findNcActionButton(wrapper, 'Create a new conversation')
+			expect(newConversationbutton.exists()).toBeFalsy()
 		})
 	})
 

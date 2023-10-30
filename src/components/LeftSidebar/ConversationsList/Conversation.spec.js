@@ -13,11 +13,16 @@ import Conversation from './Conversation.vue'
 
 import router from '../../../__mocks__/router.js'
 import { CONVERSATION, PARTICIPANT, ATTENDEE } from '../../../constants.js'
+import { leaveConversation } from '../../../services/participantsService.js'
 import storeConfig from '../../../store/storeConfig.js'
 
 jest.mock('@nextcloud/dialogs', () => ({
 	showSuccess: jest.fn(),
 	showError: jest.fn(),
+}))
+
+jest.mock('../../../services/participantsService', () => ({
+	leaveConversation: jest.fn(),
 }))
 
 // TODO fix after RouterLinkStub can support slots https://github.com/vuejs/vue-test-utils/issues/1803
@@ -96,7 +101,7 @@ describe('Conversation.vue', () => {
 
 		const el = wrapper.findComponent({ name: 'NcListItem' })
 		expect(el.exists()).toBe(true)
-		expect(el.props('title')).toBe('conversation one')
+		expect(el.props('name')).toBe('conversation one')
 
 		const icon = el.findComponent({ name: 'ConversationIcon' })
 		expect(icon.props('item')).toStrictEqual(item)
@@ -104,10 +109,10 @@ describe('Conversation.vue', () => {
 		expect(icon.props('hideCall')).toStrictEqual(false)
 	})
 
-	describe('displayed subtitle', () => {
+	describe('displayed subname', () => {
 		/**
 		 * @param {object} item Conversation data
-		 * @param {string} expectedText Expected subtitle of the conversation item
+		 * @param {string} expectedText Expected subname of the conversation item
 		 * @param {boolean} isSearchResult Whether or not the item is a search result (has no … menu)
 		 */
 		function testConversationLabel(item, expectedText, isSearchResult = false) {
@@ -124,7 +129,7 @@ describe('Conversation.vue', () => {
 			})
 
 			const el = wrapper.findComponent({ name: 'NcListItem' })
-			expect(el.vm.$slots.subtitle[0].text.trim()).toBe(expectedText)
+			expect(el.vm.$slots.subname[0].text.trim()).toBe(expectedText)
 		}
 
 		test('display joining conversation message when not joined yet', () => {
@@ -357,11 +362,12 @@ describe('Conversation.vue', () => {
 			test('leaves conversation', async () => {
 				const actionHandler = jest.fn()
 				testStoreConfig.modules.participantsStore.actions.removeCurrentUserFromConversation = actionHandler
-
+				leaveConversation.mockResolvedValue()
 				const action = shallowMountAndGetAction('Leave conversation')
 				expect(action.exists()).toBe(true)
 
 				await action.find('button').trigger('click')
+				await flushPromises()
 
 				expect(actionHandler).toHaveBeenCalledWith(expect.anything(), { token: TOKEN })
 			})

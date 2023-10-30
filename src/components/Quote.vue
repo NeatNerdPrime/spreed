@@ -34,6 +34,11 @@ components.
 				class="quote__main__author"
 				role="heading"
 				aria-level="4">
+				<AvatarWrapper :id="actorId"
+					:name="getDisplayName"
+					:source="actorType"
+					:size="AVATAR.SIZE.EXTRA_SMALL"
+					disable-menu />
 				{{ getDisplayName }}
 			</div>
 			<div v-if="isFileShareMessage"
@@ -44,7 +49,7 @@ components.
 			</div>
 			<blockquote v-else
 				class="quote__main__text">
-				<p>{{ shortenedQuoteMessage }}</p>
+				<p dir="auto">{{ shortenedQuoteMessage }}</p>
 			</blockquote>
 		</div>
 		<div v-if="isNewMessageQuote" class="quote__main__right">
@@ -65,14 +70,17 @@ import Close from 'vue-material-design-icons/Close.vue'
 import NcButton from '@nextcloud/vue/dist/Components/NcButton.js'
 import NcRichText from '@nextcloud/vue/dist/Components/NcRichText.js'
 
+import AvatarWrapper from './AvatarWrapper/AvatarWrapper.vue'
 import DefaultParameter from './MessagesList/MessagesGroup/Message/MessagePart/DefaultParameter.vue'
 import FilePreview from './MessagesList/MessagesGroup/Message/MessagePart/FilePreview.vue'
 
+import { AVATAR } from '../constants.js'
 import { EventBus } from '../services/EventBus.js'
 
 export default {
 	name: 'Quote',
 	components: {
+		AvatarWrapper,
 		NcButton,
 		Close,
 		NcRichText,
@@ -132,14 +140,12 @@ export default {
 			type: Boolean,
 			default: false,
 		},
-		/**
-		 * The parent message's id
-		 */
-		parentId: {
-			type: Number,
-			required: true,
-		},
 	},
+
+	setup() {
+		return { AVATAR }
+	},
+
 	computed: {
 		/**
 		 * The message actor display name.
@@ -166,8 +172,7 @@ export default {
 		},
 
 		isFileShareMessage() {
-			return this.message === '{file}'
-				&& 'file' in this.messageParameters
+			return Object.keys(Object(this.messageParameters)).some(key => key.startsWith('file'))
 		},
 
 		richParameters() {
@@ -178,9 +183,9 @@ export default {
 					richParameters[p] = {
 						component: FilePreview,
 						props: Object.assign({
+							token: this.token,
 							smallPreview: true,
-						}, this.messageParameters[p]
-						),
+						}, this.messageParameters[p]),
 					}
 				} else {
 					richParameters[p] = {
@@ -244,7 +249,14 @@ export default {
 		},
 
 		handleQuoteClick() {
-			EventBus.$emit('focus-message', this.parentId)
+			const parentHash = '#message_' + this.id
+			if (this.$route.hash !== parentHash) {
+				// Change route to trigger message fetch, if not fetched yet
+				this.$router.replace(parentHash)
+			} else {
+				// Already on this message route, just trigger highlight
+				EventBus.$emit('focus-message', this.id)
+			}
 		},
 	},
 }
@@ -255,14 +267,28 @@ export default {
 @import '../assets/variables';
 
 .quote {
-	border-left: 4px solid var(--color-border-dark);
-	margin: 4px 0 4px 8px;
-	padding-left: 8px;
+	position: relative;
+	margin: 4px 0;
+	padding: 6px 6px 6px 24px;
 	display: flex;
 	max-width: $messages-list-max-width - $message-utils-width;
+	border-radius: var(--border-radius-large);
+	border: 2px solid var(--color-border);
+	background-color: var(--color-main-background);
 
-	&.quote-own-message {
-		border-left: 4px solid var(--color-primary-element);
+	&::before {
+		content: ' ';
+		position: absolute;
+		top: 8px;
+		left: 8px;
+		height: calc(100% - 16px);
+		width: 8px;
+		border-radius: var(--border-radius);
+		background-color: var(--color-border);
+	}
+
+	&.quote-own-message::before {
+		background-color: var(--color-primary-element);
 	}
 
 	&__main {
@@ -270,6 +296,9 @@ export default {
 		flex-direction: column;
 		flex: 1 1 auto;
 		&__author {
+			display: flex;
+			align-items: center;
+			gap: 4px;
 			color: var(--color-text-maxcontrast);
 		}
 		&__text {
@@ -279,10 +308,11 @@ export default {
 			& p {
 				text-overflow: ellipsis;
 				overflow: hidden;
-				// Allow 2 lines max and ellipsize the overflow;
+				// Allow 1 line max and ellipsize the overflow;
 				display: -webkit-box;
-				-webkit-line-clamp: 2;
+				-webkit-line-clamp: 1;
 				-webkit-box-orient: vertical;
+				text-align: start;
 			}
 		}
 	}

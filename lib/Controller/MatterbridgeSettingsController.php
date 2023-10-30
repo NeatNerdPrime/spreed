@@ -5,6 +5,7 @@ declare(strict_types=1);
  * @copyright Copyright (c) 2020 Joas Schilling <coding@schilljs.com>
  *
  * @author Joas Schilling <coding@schilljs.com>
+ * @author Kate Döen <kate.doeen@nextcloud.com>
  *
  * @license GNU AGPL version 3 or any later version
  *
@@ -34,21 +35,22 @@ use OCP\AppFramework\OCSController;
 use OCP\IRequest;
 
 class MatterbridgeSettingsController extends OCSController {
-	protected MatterbridgeManager $bridgeManager;
 
 	public function __construct(
 		string $appName,
 		IRequest $request,
-		MatterbridgeManager $bridgeManager,
+		protected MatterbridgeManager $bridgeManager,
 	) {
 		parent::__construct($appName, $request);
-		$this->bridgeManager = $bridgeManager;
 	}
 
 	/**
 	 * Get Matterbridge version
 	 *
-	 * @return DataResponse
+	 * @return DataResponse<Http::STATUS_OK, array{version: string}, array{}>|DataResponse<Http::STATUS_BAD_REQUEST, array{error: string}, array{}>
+	 *
+	 * 200: Bridge version returned
+	 * 400: Getting bridge version is not possible
 	 */
 	public function getMatterbridgeVersion(): DataResponse {
 		try {
@@ -72,7 +74,10 @@ class MatterbridgeSettingsController extends OCSController {
 	/**
 	 * Stop all bridges
 	 *
-	 * @return DataResponse
+	 * @return DataResponse<Http::STATUS_OK, bool, array{}>|DataResponse<Http::STATUS_NOT_ACCEPTABLE, array{error: string}, array{}>
+	 *
+	 * 200: All bridges stopped successfully
+	 * 406: Stopping all bridges is not possible
 	 */
 	public function stopAllBridges(): DataResponse {
 		try {

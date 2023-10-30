@@ -5,6 +5,7 @@ declare(strict_types=1);
  * @copyright Copyright (c) 2020 Joas Schilling <coding@schilljs.com>
  *
  * @author Joas Schilling <coding@schilljs.com>
+ * @author Kate Döen <kate.doeen@nextcloud.com>
  *
  * @license GNU AGPL version 3 or any later version
  *
@@ -44,36 +45,29 @@ use OCP\IRequest;
 use Psr\Log\LoggerInterface;
 
 class SettingsController extends OCSController {
-	protected IRootFolder $rootFolder;
-	protected IConfig $config;
-	protected IGroupManager $groupManager;
-	protected ParticipantService $participantService;
-	protected LoggerInterface $logger;
-	protected ?string $userId;
 
 	public function __construct(
 		string $appName,
 		IRequest $request,
-		IRootFolder $rootFolder,
-		IConfig $config,
-		IGroupManager $groupManager,
-		ParticipantService $participantService,
-		LoggerInterface $logger,
-		?string $userId,
+		protected IRootFolder $rootFolder,
+		protected IConfig $config,
+		protected IGroupManager $groupManager,
+		protected ParticipantService $participantService,
+		protected LoggerInterface $logger,
+		protected ?string $userId,
 	) {
 		parent::__construct($appName, $request);
-		$this->rootFolder = $rootFolder;
-		$this->config = $config;
-		$this->groupManager = $groupManager;
-		$this->participantService = $participantService;
-		$this->logger = $logger;
-		$this->userId = $userId;
 	}
 
 	/**
-	 * @param string $key
-	 * @param string|int|null $value
-	 * @return DataResponse
+	 * Update user setting
+	 *
+	 * @param string $key Key to update
+	 * @param string|int|null $value New value for the key
+	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_BAD_REQUEST, array<empty>, array{}>
+	 *
+	 * 200: User setting updated successfully
+	 * 400: Updating user setting is not possible
 	 */
 	#[NoAdminRequired]
 	public function setUserSetting(string $key, $value): DataResponse {
@@ -126,10 +120,14 @@ class SettingsController extends OCSController {
 	}
 
 	/**
-	 * @param string[] $sipGroups
-	 * @param string $dialInInfo
-	 * @param string $sharedSecret
-	 * @return DataResponse
+	 * Update SIP settings
+	 *
+	 * @param string[] $sipGroups New SIP groups
+	 * @param string $dialInInfo New dial info
+	 * @param string $sharedSecret New shared secret
+	 * @return DataResponse<Http::STATUS_OK, array<empty>, array{}>
+	 *
+	 * 200: Successfully set new SIP settings
 	 */
 	public function setSIPSettings(
 		array $sipGroups = [],

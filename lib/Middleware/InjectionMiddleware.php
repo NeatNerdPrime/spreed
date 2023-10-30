@@ -33,6 +33,7 @@ use OCA\Talk\Middleware\Attribute\RequireLoggedInParticipant;
 use OCA\Talk\Middleware\Attribute\RequireModeratorOrNoLobby;
 use OCA\Talk\Middleware\Attribute\RequireModeratorParticipant;
 use OCA\Talk\Middleware\Attribute\RequireParticipant;
+use OCA\Talk\Middleware\Attribute\RequireParticipantOrLoggedInAndListedConversation;
 use OCA\Talk\Middleware\Attribute\RequirePermission;
 use OCA\Talk\Middleware\Attribute\RequireReadWriteConversation;
 use OCA\Talk\Middleware\Attribute\RequireRoom;
@@ -53,31 +54,23 @@ use OCP\AppFramework\Http\Response;
 use OCP\AppFramework\Middleware;
 use OCP\AppFramework\OCS\OCSException;
 use OCP\AppFramework\OCSController;
+use OCP\Federation\ICloudIdManager;
 use OCP\IRequest;
 use OCP\Security\Bruteforce\IThrottler;
 
 class InjectionMiddleware extends Middleware {
-	protected IRequest $request;
-	protected ParticipantService $participantService;
-	protected TalkSession $talkSession;
-	protected Manager $manager;
-	protected IThrottler $throttler;
-	protected ?string $userId;
+	protected bool $isTalkFederation = false;
+	protected ?string $federationCloudId = null;
 
 	public function __construct(
-		IRequest $request,
-		ParticipantService $participantService,
-		TalkSession $talkSession,
-		Manager $manager,
-		IThrottler $throttler,
-		?string $userId,
+		protected IRequest $request,
+		protected ParticipantService $participantService,
+		protected TalkSession $talkSession,
+		protected Manager $manager,
+		protected ICloudIdManager $cloudIdManager,
+		protected IThrottler $throttler,
+		protected ?string $userId,
 	) {
-		$this->request = $request;
-		$this->participantService = $participantService;
-		$this->talkSession = $talkSession;
-		$this->manager = $manager;
-		$this->throttler = $throttler;
-		$this->userId = $userId;
 	}
 
 	/**
@@ -95,6 +88,11 @@ class InjectionMiddleware extends Middleware {
 			return;
 		}
 
+		$this->isTalkFederation = (bool) $this->request->getHeader('X-Nextcloud-Federation');
+		if ($this->isTalkFederation) {
+			$controller->setRemoteAccess($this->getRemoteAccessActorId(), $this->getRemoteAccessToken());
+		}
+
 		$reflectionMethod = new \ReflectionMethod($controller, $methodName);
 
 		$apiVersion = $this->request->getParam('apiVersion');
@@ -106,6 +104,10 @@ class InjectionMiddleware extends Middleware {
 
 		if (!empty($reflectionMethod->getAttributes(RequireLoggedInModeratorParticipant::class))) {
 			$this->getLoggedIn($controller, true);
+		}
+
+		if (!empty($reflectionMethod->getAttributes(RequireParticipantOrLoggedInAndListedConversation::class))) {
+			$this->getLoggedInOrGuest($controller, false, true);
 		}
 
 		if (!empty($reflectionMethod->getAttributes(RequireParticipant::class))) {
@@ -169,15 +171,24 @@ class InjectionMiddleware extends Middleware {
 	/**
 	 * @param AEnvironmentAwareController $controller
 	 * @param bool $moderatorRequired
+	 * @param bool $requireListedWhenNoParticipant
 	 * @throws NotAModeratorException
 	 * @throws ParticipantNotFoundException
 	 */
-	protected function getLoggedInOrGuest(AEnvironmentAwareController $controller, bool $moderatorRequired): void {
+	protected function getLoggedInOrGuest(AEnvironmentAwareController $controller, bool $moderatorRequired, bool $requireListedWhenNoParticipant = false): void {
 		$room = $controller->getRoom();
 		if (!$room instanceof Room) {
 			$token = $this->request->getParam('token');
 			$sessionId = $this->talkSession->getSessionForRoom($token);
-			$room = $this->manager->getRoomForUserByToken($token, $this->userId, $sessionId);
+			if (!$this->isTalkFederation) {
+				$room = $this->manager->getRoomForUserByToken($token, $this->userId, $sessionId);
+			} else {
+				$room = $this->manager->getRoomByRemoteAccess($token, Attendee::ACTOR_FEDERATED_USERS, $this->getRemoteAccessActorId(), $this->getRemoteAccessToken());
+
+				// Get and set the participant already so we don't retry public access
+				$participant = $this->participantService->getParticipantByActor($room, Attendee::ACTOR_FEDERATED_USERS, $this->getRemoteAccessActorId());
+				$controller->setParticipant($participant);
+			}
 			$controller->setRoom($room);
 		}
 
@@ -187,6 +198,7 @@ class InjectionMiddleware extends Middleware {
 			if ($sessionId !== null) {
 				try {
 					$participant = $this->participantService->getParticipantBySession($room, $sessionId);
+					$controller->setParticipant($participant);
 				} catch (ParticipantNotFoundException $e) {
 					// ignore and fall back in case a concurrent request might have
 					// invalidated the session
@@ -194,15 +206,37 @@ class InjectionMiddleware extends Middleware {
 			}
 
 			if ($participant === null) {
-				$participant = $this->participantService->getParticipant($room, $this->userId);
+				if (!$requireListedWhenNoParticipant || !$this->manager->isRoomListableByUser($room, $this->userId)) {
+					$participant = $this->participantService->getParticipant($room, $this->userId);
+					$controller->setParticipant($participant);
+				}
 			}
-
-			$controller->setParticipant($participant);
 		}
 
 		if ($moderatorRequired && !$participant->hasModeratorPermissions()) {
 			throw new NotAModeratorException();
 		}
+	}
+
+	protected function getRemoteAccessActorId(): string {
+		if ($this->federationCloudId !== null) {
+			return $this->federationCloudId;
+		}
+		$authUser = $this->request->server['PHP_AUTH_USER'] ?? '';
+		$authUser = urldecode($authUser);
+
+		try {
+			$cloudId = $this->cloudIdManager->resolveCloudId($authUser);
+			$this->federationCloudId = $cloudId->getId();
+		} catch (\InvalidArgumentException) {
+			$this->federationCloudId = '';
+		}
+
+		return $this->federationCloudId;
+	}
+
+	protected function getRemoteAccessToken(): string {
+		return $this->request->server['PHP_AUTH_PW'] ?? '';
 	}
 
 	/**

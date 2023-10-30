@@ -35,11 +35,13 @@
 </template>
 
 <script>
-import attachMediaStream from 'attachmediastream'
+import attachMediaStream from 'attachmediastream/attachmediastream.bundle.js'
 import Hex from 'crypto-js/enc-hex.js'
 import SHA1 from 'crypto-js/sha1.js'
 
 import VideoBottomBar from './VideoBottomBar.vue'
+
+import { useGuestNameStore } from '../../../stores/guestName.js'
 
 export default {
 
@@ -70,6 +72,11 @@ export default {
 			type: Boolean,
 			default: false,
 		},
+	},
+
+	setup() {
+		const guestNameStore = useGuestNameStore()
+		return { guestNameStore }
 	},
 
 	computed: {
@@ -103,7 +110,7 @@ export default {
 			// for registered users, so do not fall back to the guest name in
 			// the store either until the connection was made.
 			if (!this.callParticipantModel.attributes.userId && !remoteParticipantName && remoteParticipantName !== undefined) {
-				remoteParticipantName = this.$store.getters.getGuestName(
+				remoteParticipantName = this.guestNameStore.getGuestName(
 					this.$store.getters.getToken(),
 					this.remoteSessionHash,
 				)

@@ -33,16 +33,12 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
 class Remove extends Base {
-	private IUserManager $userManager;
-	private Manager $manager;
 
 	public function __construct(
-		IUserManager $userManager,
-		Manager $manager,
+		private IUserManager $userManager,
+		private Manager $manager,
 	) {
 		parent::__construct();
-		$this->userManager = $userManager;
-		$this->manager = $manager;
 	}
 
 	protected function configure(): void {
@@ -54,11 +50,19 @@ class Remove extends Base {
 				null,
 				InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY,
 				'Remove the given users from all rooms'
-			);
+			)
+			->addOption(
+				'private-only',
+				null,
+				InputOption::VALUE_NONE,
+				'Only remove the user from private rooms, retaining membership in public and open conversations as well as one-to-ones'
+			)
+		;
 	}
 
 	protected function execute(InputInterface $input, OutputInterface $output): int {
 		$userIds = $input->getOption('user');
+		$privateOnly = $input->getOption('private-only');
 
 		$users = [];
 		foreach ($userIds as $userId) {
@@ -71,7 +75,7 @@ class Remove extends Base {
 		}
 
 		foreach ($users as $user) {
-			$this->manager->removeUserFromAllRooms($user);
+			$this->manager->removeUserFromAllRooms($user, $privateOnly);
 		}
 
 		$output->writeln('<info>Users successfully removed from all rooms.</info>');

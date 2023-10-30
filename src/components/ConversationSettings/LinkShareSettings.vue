@@ -20,12 +20,12 @@
 -->
 
 <template>
-	<Fragment>
-		<div class="app-settings-subsection">
-			<h4 class="app-settings-section__subtitle">
-				{{ t('spreed', 'Guest access') }}
-			</h4>
+	<div class="app-settings-subsection">
+		<h4 class="app-settings-section__subtitle">
+			{{ t('spreed', 'Guest access') }}
+		</h4>
 
+		<template v-if="canFullModerate">
 			<NcCheckboxRadioSwitch :checked="isSharedPublicly"
 				:disabled="isSaving"
 				type="switch"
@@ -35,7 +35,7 @@
 			</NcCheckboxRadioSwitch>
 
 			<NcCheckboxRadioSwitch v-show="isSharedPublicly"
-				:checked="conversation.hasPassword"
+				:checked="isPasswordProtectionChecked"
 				:disabled="isSaving"
 				type="switch"
 				aria-describedby="link_share_settings_password_hint"
@@ -43,31 +43,33 @@
 				{{ t('spreed', 'Password protection') }}
 			</NcCheckboxRadioSwitch>
 
-			<template v-if="showPasswordField">
-				<form class="password-form"
-					@submit.prevent="handleSetNewPassword">
-					<NcPasswordField ref="passwordField"
-						:value.sync="password"
-						autocomplete="new-password"
-						:check-password-strength="true"
-						:disabled="isSaving"
-						class="password-form__input-field"
-						:label-visible="true"
-						:label="t('spreed', 'Enter new password')" />
-					<NcButton :disabled="isSaving"
-						type="primary"
-						native-type="submit">
-						<template #icon>
-							<ArrowRight />
-						</template>
-						{{ t('spreed', 'Save password') }}
-					</NcButton>
-				</form>
-			</template>
-		</div>
-		<div class="app-settings-subsection app-settings-subsection__buttons">
+			<form v-if="showPasswordField" class="password-form" @submit.prevent="handleSetNewPassword">
+				<NcPasswordField ref="passwordField"
+					:value.sync="password"
+					autocomplete="new-password"
+					check-password-strength
+					:disabled="isSaving"
+					class="password-form__input-field"
+					label-visible
+					:label="t('spreed', 'Enter new password')" />
+				<NcButton :disabled="isSaving" type="primary" native-type="submit">
+					<template #icon>
+						<ArrowRight />
+					</template>
+					{{ t('spreed', 'Save password') }}
+				</NcButton>
+			</form>
+		</template>
+
+		<p v-else-if="isSharedPublicly">
+			{{ t('spreed', 'Guests are allowed to join this conversation via link') }}
+		</p>
+		<p v-else>
+			{{ t('spreed', 'Guests are not allowed to join this conversation') }}
+		</p>
+
+		<div class="app-settings-subsection__buttons">
 			<NcButton ref="copyLinkButton"
-				:wide="true"
 				@click="handleCopyLink"
 				@keydown.enter="handleCopyLink">
 				<template #icon>
@@ -75,9 +77,8 @@
 				</template>
 				{{ t('spreed', 'Copy conversation link') }}
 			</NcButton>
-			<NcButton v-if="isSharedPublicly"
+			<NcButton v-if="isSharedPublicly && canFullModerate"
 				:disabled="isSendingInvitations"
-				:wide="true"
 				@click="handleResendInvitations"
 				@keydown.enter="handleResendInvitations">
 				<template #icon>
@@ -87,12 +88,10 @@
 			</NcButton>
 			<span v-if="isSendingInvitations" class="icon-loading-small spinner" />
 		</div>
-	</Fragment>
+	</div>
 </template>
 
 <script>
-import { Fragment } from 'vue-frag'
-
 import ArrowRight from 'vue-material-design-icons/ArrowRight.vue'
 import ClipboardTextOutline from 'vue-material-design-icons/ClipboardTextOutline.vue'
 import Email from 'vue-material-design-icons/Email.vue'
@@ -116,7 +115,18 @@ export default {
 		ArrowRight,
 		ClipboardTextOutline,
 		Email,
-		Fragment,
+	},
+
+	props: {
+		token: {
+			type: String,
+			default: null,
+		},
+
+		canFullModerate: {
+			type: Boolean,
+			default: true,
+		},
 	},
 
 	data() {
@@ -135,12 +145,12 @@ export default {
 			return this.conversation.type === CONVERSATION.TYPE.PUBLIC
 		},
 
-		token() {
-			return this.$store.getters.getToken()
-		},
-
 		conversation() {
 			return this.$store.getters.conversation(this.token) || this.$store.getters.dummyConversation
+		},
+
+		isPasswordProtectionChecked() {
+			return this.conversation.hasPassword || this.showPasswordField
 		},
 	},
 
@@ -204,7 +214,7 @@ export default {
 				this.showPasswordField = true
 				await this.handlePasswordEnable()
 				this.$nextTick(() => {
-					this.$refs.passwordField.$el.focus()
+					this.$refs.passwordField.focus()
 				})
 			} else {
 				this.showPasswordField = false
@@ -273,5 +283,9 @@ button > .material-design-icon {
 .app-settings-subsection__buttons {
 	display: flex;
 	gap: 8px;
+	margin-top: 25px;
+	& > button {
+		flex-basis: 50%;
+	}
 }
 </style>

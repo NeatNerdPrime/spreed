@@ -49,16 +49,6 @@ const getters = {
 			return false
 		}
 	},
-
-	// Checks if a user has already reacted to a message with a particular reaction
-	userHasReacted: (state) => (actorType, actorId, token, messageId, reaction) => {
-		if (!state?.reactions?.[token]?.[messageId]?.[reaction]) {
-			return false
-		}
-		return state?.reactions?.[token]?.[messageId]?.[reaction].filter(item => {
-			return item.actorType === actorType && item.actorId === actorId
-		}).length !== 0
-	},
 }
 
 const mutations = {
@@ -83,13 +73,25 @@ const actions = {
 	 * Updates reactions for a given message.
 	 *
 	 * @param {*} context The context object
-	 * @param {*} param1 conversation token, message id
+	 * @param {*} param1 conversation token, message id, reactions details
 	 */
 	async updateReactions(context, { token, messageId, reactionsDetails }) {
 		context.commit('addReactions', {
 			token,
 			messageId,
 			reactions: reactionsDetails,
+		})
+	},
+	/**
+	 * Resets reactions for a given message.
+	 *
+	 * @param {*} context The context object
+	 * @param {*} param1 conversation token, message id
+	 */
+	async resetReactions(context, { token, messageId }) {
+		context.commit('resetReactions', {
+			token,
+			messageId,
 		})
 	},
 

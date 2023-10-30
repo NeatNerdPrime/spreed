@@ -25,9 +25,9 @@ namespace OCA\Talk\Notification;
 
 use OCA\Talk\AppInfo\Application;
 use OCA\Talk\Events\AddParticipantsEvent;
+use OCA\Talk\Events\CallNotificationSendEvent;
 use OCA\Talk\Events\JoinRoomUserEvent;
 use OCA\Talk\Events\RoomEvent;
-use OCA\Talk\Events\SendCallNotificationEvent;
 use OCA\Talk\Events\SilentModifyParticipantEvent;
 use OCA\Talk\Model\Attendee;
 use OCA\Talk\Room;
@@ -47,32 +47,18 @@ use Psr\Log\LoggerInterface;
  * @template-implements IEventListener<Event>
  */
 class Listener implements IEventListener {
-	protected IDBConnection $connection;
-	protected IManager $notificationManager;
-	protected ParticipantService $participantsService;
-	protected IEventDispatcher $dispatcher;
-	protected IUserSession $userSession;
-	protected ITimeFactory $timeFactory;
-	protected LoggerInterface $logger;
 
 	protected bool $shouldSendCallNotification = false;
 
 	public function __construct(
-		IDBConnection $connection,
-		IManager $notificationManager,
-		ParticipantService $participantsService,
-		IEventDispatcher $dispatcher,
-		IUserSession $userSession,
-		ITimeFactory $timeFactory,
-		LoggerInterface $logger,
+		protected IDBConnection $connection,
+		protected IManager $notificationManager,
+		protected ParticipantService $participantsService,
+		protected IEventDispatcher $dispatcher,
+		protected IUserSession $userSession,
+		protected ITimeFactory $timeFactory,
+		protected LoggerInterface $logger,
 	) {
-		$this->connection = $connection;
-		$this->notificationManager = $notificationManager;
-		$this->participantsService = $participantsService;
-		$this->dispatcher = $dispatcher;
-		$this->userSession = $userSession;
-		$this->timeFactory = $timeFactory;
-		$this->logger = $logger;
 	}
 
 	public static function register(IEventDispatcher $dispatcher): void {
@@ -303,7 +289,7 @@ class Listener implements IEventListener {
 	}
 
 	public function handle(Event $event): void {
-		if ($event instanceof SendCallNotificationEvent) {
+		if ($event instanceof CallNotificationSendEvent) {
 			$this->sendCallNotification($event->getRoom(), $event->getActor()->getAttendee(), $event->getTarget()->getAttendee());
 		}
 	}

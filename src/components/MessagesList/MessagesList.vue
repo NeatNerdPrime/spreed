@@ -32,41 +32,37 @@ get the messagesList array and loop through the list to generate the messages.
 		class="scroller messages-list__scroller"
 		:class="{'scroller--chatScrolledToBottom': isChatScrolledToBottom}"
 		@scroll="debounceHandleScroll">
-		<div v-if="displayMessagesLoader"
-			class="scroller__loading"
-			disabled>
-			<div class="icon-loading" />
-		</div>
-		<MessagesGroup v-for="(item, index) of messagesGroupedByAuthor"
-			:key="item[0].id"
-			:style="{ height: item.height + 'px' }"
-			v-bind="item"
-			:token="token"
-			:messages="item"
-			:next-message-id="(messagesGroupedByAuthor[index + 1] && messagesGroupedByAuthor[index + 1][0].id) || 0"
-			:previous-message-id="(index > 0 && messagesGroupedByAuthor[index - 1][messagesGroupedByAuthor[index - 1].length - 1].id) || 0" />
+		<div v-if="displayMessagesLoader" class="scroller__loading icon-loading" />
+
+		<template v-for="item of messagesGroupedByAuthor">
+			<div v-if="item.dateSeparator" :key="`date_${item.id}`" class="messages-group__date">
+				<span class="messages-group__date-text" role="heading" aria-level="3">
+					{{ item.dateSeparator }}
+				</span>
+			</div>
+			<component :is="messagesGroupComponent(item)"
+				:key="item.id"
+				ref="messagesGroup"
+				class="messages-group"
+				v-bind="item.messages"
+				:token="token"
+				:messages="item.messages"
+				:previous-message-id="item.previousMessageId"
+				:next-message-id="item.nextMessageId" />
+		</template>
+
 		<template v-if="showLoadingAnimation">
 			<LoadingPlaceholder type="messages"
 				:count="15" />
 		</template>
 		<NcEmptyContent v-else-if="showEmptyContent"
-			:title="t('spreed', 'No messages')"
+			class="messages-list__empty-content"
+			:name="t('spreed', 'No messages')"
 			:description="t('spreed', 'All messages have expired or have been deleted.')">
 			<template #icon>
 				<Message :size="64" />
 			</template>
 		</NcEmptyContent>
-		<transition name="fade">
-			<NcButton v-show="!isChatScrolledToBottom"
-				type="secondary"
-				:aria-label="scrollToBottomAriaLabel"
-				class="scroll-to-bottom"
-				@click="smoothScrollToBottom">
-				<template #icon>
-					<ChevronDown :size="20" />
-				</template>
-			</NcButton>
-		</transition>
 	</div>
 </template>
 
@@ -75,7 +71,6 @@ import debounce from 'debounce'
 import uniqueId from 'lodash/uniqueId.js'
 import { computed } from 'vue'
 
-import ChevronDown from 'vue-material-design-icons/ChevronDown.vue'
 import Message from 'vue-material-design-icons/Message.vue'
 
 import Axios from '@nextcloud/axios'
@@ -83,11 +78,11 @@ import { getCapabilities } from '@nextcloud/capabilities'
 import { subscribe, unsubscribe } from '@nextcloud/event-bus'
 import moment from '@nextcloud/moment'
 
-import NcButton from '@nextcloud/vue/dist/Components/NcButton.js'
 import NcEmptyContent from '@nextcloud/vue/dist/Components/NcEmptyContent.js'
 
 import LoadingPlaceholder from '../LoadingPlaceholder.vue'
 import MessagesGroup from './MessagesGroup/MessagesGroup.vue'
+import MessagesSystemGroup from './MessagesGroup/MessagesSystemGroup.vue'
 
 import { useIsInCall } from '../../composables/useIsInCall.js'
 import { ATTENDEE, CHAT } from '../../constants.js'
@@ -98,10 +93,7 @@ export default {
 	name: 'MessagesList',
 	components: {
 		LoadingPlaceholder,
-		MessagesGroup,
-		ChevronDown,
 		Message,
-		NcButton,
 		NcEmptyContent,
 	},
 
@@ -110,6 +102,7 @@ export default {
 	provide() {
 		return {
 			scrollerBoundingClientRect: computed(() => this.$refs.scroller.getBoundingClientRect()),
+			getMessagesListScroller: () => this.$refs.scroller,
 		}
 	},
 
@@ -122,11 +115,18 @@ export default {
 			required: true,
 		},
 
+		isChatScrolledToBottom: {
+			type: Boolean,
+			default: true,
+		},
+
 		isVisible: {
 			type: Boolean,
 			default: true,
 		},
 	},
+
+	emits: ['update:is-chat-scrolled-to-bottom'],
 
 	setup() {
 		const isInCall = useIsInCall()
@@ -135,6 +135,11 @@ export default {
 
 	data() {
 		return {
+			/**
+			 * An array of messages grouped in nested arrays by same author.
+			 */
+			messagesGroupedByAuthor: [],
+
 			viewId: null,
 
 			/**
@@ -156,7 +161,6 @@ export default {
 
 			isFocusingMessage: false,
 
-			isChatScrolledToBottom: true,
 			/**
 			 * Quick edit option to fall back to the loading history and then new messages
 			 */
@@ -186,33 +190,6 @@ export default {
 		messagesList() {
 			return this.$store.getters.messagesList(this.token)
 		},
-		/**
-		 * Creates an array of messages grouped in nested arrays by same author.
-		 *
-		 * @return {Array}
-		 */
-		messagesGroupedByAuthor() {
-			const groups = []
-			let lastMessage = null
-			for (const message of this.messagesList) {
-				if (message.systemMessage === 'message_deleted') {
-					continue
-				}
-
-				if (!this.messagesShouldBeGrouped(message, lastMessage)) {
-					// Add the date separator for different days
-					if (this.messagesHaveDifferentDate(message, lastMessage)) {
-						message.dateSeparator = this.generateDateSeparator(message)
-					}
-
-					groups.push([message])
-					lastMessage = message
-				} else {
-					groups.at(-1).push(message)
-				}
-			}
-			return groups
-		},
 
 		showLoadingAnimation() {
 			return !this.$store.getters.isMessageListPopulated(this.token)
@@ -234,6 +211,10 @@ export default {
 		 */
 		isSticky() {
 			return this.isChatScrolledToBottom && !this.isInitialisingMessages
+		},
+
+		hasMoreMessagesToLoad() {
+			return this.$store.getters.hasMoreMessagesToLoad(this.token)
 		},
 
 		/**
@@ -258,10 +239,6 @@ export default {
 		chatIdentifier() {
 			return this.token + ':' + this.isParticipant + ':' + this.isInLobby + ':' + this.viewId
 		},
-
-		scrollToBottomAriaLabel() {
-			return t('spreed', 'Scroll to bottom')
-		},
 	},
 
 	watch: {
@@ -276,7 +253,7 @@ export default {
 				if (oldValue) {
 					this.$store.dispatch('cancelLookForNewMessages', { requestId: oldValue })
 				}
-				this.isChatScrolledToBottom = true
+				this.$emit('update:is-chat-scrolled-to-bottom', true)
 				this.handleStartGettingMessagesPreconditions()
 
 				// Remove expired messages when joining a room
@@ -288,6 +265,14 @@ export default {
 			// Expire older messages when navigating to another conversation
 			this.$store.dispatch('easeMessageList', { token: oldToken })
 		},
+
+		messagesList: {
+			immediate: true,
+			handler(messages) {
+				const groups = this.prepareMessagesGroups(messages)
+				this.messagesGroupedByAuthor = this.softUpdateMessagesGroups(this.messagesGroupedByAuthor, groups)
+			},
+		},
 	},
 
 	mounted() {
@@ -295,6 +280,7 @@ export default {
 		this.scrollToBottom()
 		EventBus.$on('scroll-chat-to-bottom', this.handleScrollChatToBottomEvent)
 		EventBus.$on('smooth-scroll-chat-to-bottom', this.smoothScrollToBottom)
+		EventBus.$on('scroll-chat-to-bottom-if-sticky', this.scrollToBottomIfSticky)
 		EventBus.$on('focus-message', this.focusMessage)
 		EventBus.$on('route-change', this.onRouteChange)
 		subscribe('networkOffline', this.handleNetworkOffline)
@@ -313,6 +299,7 @@ export default {
 		window.removeEventListener('focus', this.onWindowFocus)
 		EventBus.$off('scroll-chat-to-bottom', this.handleScrollChatToBottomEvent)
 		EventBus.$off('smooth-scroll-chat-to-bottom', this.smoothScrollToBottom)
+		EventBus.$on('scroll-chat-to-bottom-if-sticky', this.scrollToBottomIfSticky)
 		EventBus.$off('focus-message', this.focusMessage)
 		EventBus.$off('route-change', this.onRouteChange)
 
@@ -329,6 +316,55 @@ export default {
 	},
 
 	methods: {
+		prepareMessagesGroups(messages) {
+			const groups = []
+			let lastMessage = null
+			for (const message of messages) {
+				if (!this.messagesShouldBeGrouped(message, lastMessage)) {
+					if (groups.at(-1)) {
+						groups.at(-1).nextMessageId = message.id
+					}
+
+					groups.push({
+						id: message.id,
+						messages: [message],
+						dateSeparator: this.generateDateSeparator(message, lastMessage),
+						previousMessageId: groups.at(-1)?.messages.at(-1).id ?? 0,
+						nextMessageId: 0,
+						isSystemMessagesGroup: message.systemMessage.length !== 0,
+					})
+				} else {
+					groups.at(-1).messages.push(message)
+				}
+				lastMessage = message
+			}
+
+			return groups
+		},
+
+		softUpdateMessagesGroups(oldGroups, newGroups) {
+			const oldGroupsMap = new Map(oldGroups.map(group => [group.id, group]))
+
+			// Check if we have this group in the old list already and it is unchanged
+			return newGroups.map(newGroup => oldGroupsMap.has(newGroup.id)
+				&& this.areGroupsIdentical(newGroup, oldGroupsMap.get(newGroup.id))
+				? oldGroupsMap.get(newGroup.id)
+				: newGroup
+			).sort((a, b) => a.id - b.id)
+		},
+
+		areGroupsIdentical(group1, group2) {
+			if (group1.messages.length !== group2.messages.length
+				|| group1.dateSeparator !== group2.dateSeparator
+				|| group1.previousMessageId !== group2.previousMessageId
+				|| group1.nextMessageId !== group2.nextMessageId) {
+				return false
+			}
+
+			// Check for temporary messages, replaced with messages from server
+			return group1.messages.every((message, index) => group2.messages[index].id === message.id)
+		},
+
 		removeExpiredMessagesFromStore() {
 			this.$store.dispatch('removeExpiredMessages', {
 				token: this.token,
@@ -374,9 +410,9 @@ export default {
 
 			if (!message1IsSystem // System messages are grouped independently of author
 				&& ((message1.actorType !== message2.actorType // Otherwise the type and id need to match
-					|| message1.actorId !== message2.actorId)
-				|| (message1.actorType === ATTENDEE.ACTOR_TYPE.BRIDGED // Or, if the message is bridged, display names also need to match
-					&& message1.actorDisplayName !== message2.actorDisplayName))) {
+						|| message1.actorId !== message2.actorId)
+					|| (message1.actorType === ATTENDEE.ACTOR_TYPE.BRIDGED // Or, if the message is bridged, display names also need to match
+						&& message1.actorDisplayName !== message2.actorDisplayName))) {
 				return false
 			}
 
@@ -385,8 +421,8 @@ export default {
 				return false
 			}
 
-			// Only group messages within a short period of time, so unrelated messages are not grouped together
-			return (this.getDateOfMessage(message1).format('X') - this.getDateOfMessage(message2).format('X')) < 300
+			// Only group messages within a short period of time (5 minutes), so unrelated messages are not grouped together
+			return this.getDateOfMessage(message1).diff(this.getDateOfMessage(message2)) < 300 * 1000
 		},
 
 		/**
@@ -411,9 +447,14 @@ export default {
 		 * @param {object} message The message object
 		 * @param {string} message.id The ID of the message
 		 * @param {number} message.timestamp Timestamp of the message
+		 * @param {object} lastMessage The previous message object
 		 * @return {string} Translated string of "<Today>, <November 11th, 2019>", "<3 days ago>, <November 8th, 2019>"
 		 */
-		generateDateSeparator(message) {
+		generateDateSeparator(message, lastMessage) {
+			if (!this.messagesHaveDifferentDate(message, lastMessage)) {
+				return ''
+			}
+
 			const date = this.getDateOfMessage(message)
 			const dayOfYear = date.format('YYYY-DDD')
 			let relativePrefix = date.fromNow()
@@ -455,9 +496,10 @@ export default {
 			return moment.unix(message.timestamp)
 		},
 
-		getMessageIdFromHash() {
-			if (this.$route?.hash?.startsWith('#message_')) {
-				// scroll to message in URL anchor
+		getMessageIdFromHash(hash = undefined) {
+			if (hash) {
+				return parseInt(hash.slice(9), 10)
+			} else if (this.$route?.hash?.startsWith('#message_')) {
 				return parseInt(this.$route.hash.slice(9), 10)
 			}
 			return null
@@ -488,7 +530,8 @@ export default {
 
 			// if no scrollbars, clear read marker directly as scrolling is not possible for the user to clear it
 			// also clear in case lastReadMessage is zero which is due to an older bug
-			if (this.visualLastReadMessageId === 0 || this.$refs.scroller.scrollHeight <= this.$refs.scroller.offsetHeight) {
+			if (this.visualLastReadMessageId === 0
+				|| (this.$refs.scroller && this.$refs.scroller.scrollHeight <= this.$refs.scroller.offsetHeight)) {
 				// clear after a delay, unless scrolling can resume in-between
 				this.debounceUpdateReadMarkerPosition()
 			}
@@ -539,17 +582,17 @@ export default {
 
 					} else {
 						// Get chat messages before last read message and after it
-						const startingMessage = this.$store.getters.getFirstKnownMessageId(this.token)
-						await this.getMessageContext(startingMessage)
-						const startingMessageFound = this.focusMessage(startingMessage, false, focusMessageId !== null)
+						const startingMessageId = this.$store.getters.getFirstKnownMessageId(this.token)
+						await this.getMessageContext(startingMessageId)
+						const startingMessageFound = this.focusMessage(startingMessageId, false, focusMessageId !== null)
 
 						if (!startingMessageFound) {
-							const fallbackStartingMessage = this.$store.getters.getFirstDisplayableMessageIdBeforeReadMarker(this.token, startingMessage)
+							const fallbackStartingMessageId = this.$store.getters.getFirstDisplayableMessageIdBeforeReadMarker(this.token, startingMessageId)
 							this.$store.dispatch('setVisualLastReadMessageId', {
 								token: this.token,
-								id: fallbackStartingMessage,
+								id: fallbackStartingMessageId,
 							})
-							this.focusMessage(fallbackStartingMessage, false, false)
+							this.focusMessage(fallbackStartingMessageId, false, false)
 						}
 					}
 				}
@@ -558,7 +601,7 @@ export default {
 				if (this.loadChatInLegacyMode || focusMessageId === null) {
 					// if lookForNewMessages will long poll instead of returning existing messages,
 					// scroll right away to avoid delays
-					if (!this.$store.getters.hasMoreMessagesToLoad(this.token)) {
+					if (!this.hasMoreMessagesToLoad) {
 						hasScrolled = true
 						this.$nextTick(() => {
 							this.scrollToFocusedMessage()
@@ -601,21 +644,20 @@ export default {
 		},
 
 		async getMessageContext(messageId) {
+			// Make the request
+			this.loadingOldMessages = true
 			try {
-				this.loadingOldMessages = true
 				await this.$store.dispatch('getMessageContext', {
 					token: this.token,
 					messageId,
 					minimumVisible: CHAT.MINIMUM_VISIBLE,
 				})
-
-				this.loadingOldMessages = false
 			} catch (exception) {
 				if (Axios.isCancel(exception)) {
 					console.debug('The request has been canceled', exception)
 				}
-				this.loadingOldMessages = false
 			}
+			this.loadingOldMessages = false
 		},
 
 		/**
@@ -625,8 +667,8 @@ export default {
 		 */
 		async getOldMessages(includeLastKnown) {
 			// Make the request
+			this.loadingOldMessages = true
 			try {
-				this.loadingOldMessages = true
 				await this.$store.dispatch('fetchMessages', {
 					token: this.token,
 					lastKnownMessageId: this.$store.getters.getFirstKnownMessageId(this.token),
@@ -634,13 +676,12 @@ export default {
 					minimumVisible: CHAT.MINIMUM_VISIBLE,
 				})
 
-				this.loadingOldMessages = false
 			} catch (exception) {
 				if (Axios.isCancel(exception)) {
 					console.debug('The request has been canceled', exception)
 				}
-				this.loadingOldMessages = false
 			}
+			this.loadingOldMessages = false
 		},
 
 		/**
@@ -710,6 +751,10 @@ export default {
 		 * or to the bottom of the list bottom.
 		 */
 		async handleScroll() {
+			if (!this.$refs.scroller) {
+				return
+			}
+
 			if (!this.$store.getters.getFirstKnownMessageId(this.token)) {
 				// This can happen if the browser is fast enough to close the sidebar
 				// when switching from a one-to-one to a group conversation.
@@ -734,7 +779,7 @@ export default {
 			const tolerance = 10
 
 			// For chats, scrolled to bottom or / and fitted in one screen
-			if (scrollOffset < clientHeight + tolerance && scrollOffset > clientHeight - tolerance) {
+			if (scrollOffset < clientHeight + tolerance && scrollOffset > clientHeight - tolerance && !this.hasMoreMessagesToLoad) {
 				this.setChatScrolledToBottom(true)
 				this.displayMessagesLoader = false
 				this.previousScrollTopValue = scrollTop
@@ -744,7 +789,7 @@ export default {
 
 			this.setChatScrolledToBottom(false)
 
-			if (scrollHeight > clientHeight && scrollTop < 800 && scrollTop <= this.previousScrollTopValue) {
+			if (scrollHeight > clientHeight && scrollTop < 800 && scrollTop < this.previousScrollTopValue) {
 				if (this.loadingOldMessages) {
 					// already loading, don't do it twice
 					return
@@ -754,9 +799,15 @@ export default {
 				}
 				await this.getOldMessages(false)
 				this.displayMessagesLoader = false
+
+				if (this.$refs.scroller.scrollHeight !== scrollHeight) {
+					this.$refs.scroller.scrollTo({
+						top: this.$refs.scroller.scrollTop + this.$refs.scroller.scrollHeight - scrollHeight,
+					})
+				}
 			}
 
-			this.previousScrollTopValue = scrollTop
+			this.previousScrollTopValue = this.$refs.scroller.scrollTop
 			this.debounceUpdateReadMarkerPosition()
 		},
 
@@ -770,6 +821,10 @@ export default {
 		 * @return {object} DOM element for the last visible message
 		 */
 		findFirstVisibleMessage(messageEl) {
+			if (!this.$refs.scroller) {
+				return
+			}
+
 			let el = messageEl
 
 			// When the current message is not visible (reaction or expired)
@@ -864,13 +919,14 @@ export default {
 			}
 
 			// if we're at bottom of the chat with no more new messages to load, then simply clear the marker
-			if (this.isSticky && !this.$store.getters.hasMoreMessagesToLoad(this.token)) {
+			if (this.isSticky && !this.hasMoreMessagesToLoad) {
 				console.debug('clearLastReadMessage because of isSticky token=' + this.token)
 				this.$store.dispatch('clearLastReadMessage', { token: this.token })
 				return
 			}
 
-			if (lastReadMessageElement && (lastReadMessageElement.offsetTop - this.$refs.scroller.scrollTop > 0)) {
+			if (lastReadMessageElement && this.$refs.scroller
+				&& (lastReadMessageElement.offsetTop - this.$refs.scroller.scrollTop > 0)) {
 				// still visible, hasn't disappeared at the top yet
 				return
 			}
@@ -904,10 +960,23 @@ export default {
 		},
 
 		/**
+		 * Scrolls to the bottom of the list (to show reaction to the last message).
+		 */
+		scrollToBottomIfSticky() {
+			if (this.isSticky) {
+				this.scrollToBottom()
+			}
+		},
+
+		/**
 		 * Scrolls to the bottom of the list smoothly.
 		 */
 		smoothScrollToBottom() {
-			this.$nextTick(function() {
+			this.$nextTick(() => {
+				if (!this.$refs.scroller) {
+					return
+				}
+
 				if (this.isWindowVisible && (document.hasFocus() || this.isInCall)) {
 					// scrollTo is used when the user is watching
 					this.$refs.scroller.scrollTo({
@@ -932,7 +1001,11 @@ export default {
 		 * Scrolls to the bottom of the list.
 		 */
 		scrollToBottom() {
-			this.$nextTick(function() {
+			this.$nextTick(() => {
+				if (!this.$refs.scroller) {
+					return
+				}
+
 				this.$refs.scroller.scrollTop = this.$refs.scroller.scrollHeight
 				this.setChatScrolledToBottom(true)
 			})
@@ -942,7 +1015,7 @@ export default {
 		/**
 		 * Temporarily highlight the given message id with a fade out effect.
 		 *
-		 * @param {string} messageId message id
+		 * @param {number} messageId message id
 		 * @param {boolean} smooth true to smooth scroll, false to jump directly
 		 * @param {boolean} highlightAnimation true to highlight and set focus to the message
 		 * @return {boolean} true if element was found, false otherwise
@@ -965,13 +1038,17 @@ export default {
 					block: 'center',
 					inline: 'nearest',
 				})
-				if (!smooth) {
+				if (this.$refs.scroller && !smooth) {
 					// scroll the viewport slightly further to make sure the element is about 1/3 from the top
 					this.$refs.scroller.scrollTop += this.$refs.scroller.offsetHeight / 4
 				}
 				if (highlightAnimation) {
-					element.focus()
-					element.highlightAnimation()
+					for (const group of this.$refs.messagesGroup) {
+						if (group.messages.some(message => message.id === messageId)) {
+							group.highlightMessage(messageId)
+							break
+						}
+					}
 				}
 				this.isFocusingMessage = false
 				await this.handleScroll()
@@ -1017,7 +1094,7 @@ export default {
 			this.getNewMessages()
 		},
 
-		onRouteChange({ from, to }) {
+		async onRouteChange({ from, to }) {
 			if (from.name === 'conversation'
 				&& to.name === 'conversation'
 				&& from.token === to.token
@@ -1025,19 +1102,34 @@ export default {
 
 				// the hash changed, need to focus/highlight another message
 				if (to.hash && to.hash.startsWith('#message_')) {
-					// need some delay (next tick is too short) to be able to run
-					// after the browser's native "scroll to anchor" from
-					// the hash
-					window.setTimeout(() => {
-						// scroll to message in URL anchor
-						this.focusMessage(to.hash.slice(9), true)
-					}, 2)
+					const focusedId = this.getMessageIdFromHash(to.hash)
+					if (this.messagesList.find(m => m.id === focusedId)) {
+						// need some delay (next tick is too short) to be able to run
+						// after the browser's native "scroll to anchor" from
+						// the hash
+						window.setTimeout(() => {
+							// scroll to message in URL anchor
+							this.focusMessage(focusedId, true)
+						}, 2)
+					} else {
+						// Update environment around context to fill the gaps
+						this.$store.dispatch('setFirstKnownMessageId', {
+							token: this.token,
+							id: focusedId,
+						})
+						this.$store.dispatch('setLastKnownMessageId', {
+							token: this.token,
+							id: focusedId,
+						})
+						await this.getMessageContext(focusedId)
+						this.focusMessage(focusedId, true)
+					}
 				}
 			}
 		},
 
 		setChatScrolledToBottom(boolean) {
-			this.isChatScrolledToBottom = boolean
+			this.$emit('update:is-chat-scrolled-to-bottom', boolean)
 			if (boolean) {
 				// mark as read if marker was seen
 				// we have to do this early because unfocusing the window will remove the stickiness
@@ -1048,6 +1140,10 @@ export default {
 		onWindowFocus() {
 			this.refreshReadMarkerPosition()
 		},
+
+		messagesGroupComponent(group) {
+			return group.isSystemMessagesGroup ? MessagesSystemGroup : MessagesGroup
+		},
 	},
 }
 </script>
@@ -1056,28 +1152,55 @@ export default {
 @import '../../assets/variables';
 
 .scroller {
+	position: relative;
 	flex: 1 0;
+	padding-top: 20px;
 	overflow-y: auto;
 	overflow-x: hidden;
 	border-bottom: 1px solid var(--color-border);
-	transition: $fade-transition;
+	transition: $transition;
 
 	&--chatScrolledToBottom {
 		border-bottom-color: transparent;
 	}
 
 	&__loading {
-		height: 50px;
-		display: flex;
-		justify-content: center;
+		position: absolute;
+		top: 10px;
+		left: 50%;
+		height: 40px;
+		width: 40px;
+		transform: translatex(-64px);
 	}
 }
 
-.scroll-to-bottom {
-	position: absolute !important;
-	bottom: 76px;
-	right: 24px;
-	z-index: 2;
+.messages-list {
+  &__empty-content {
+    height: 100%;
+  }
 }
 
+.messages-group {
+	&__date {
+		display: block;
+		text-align: center;
+		padding-top: 20px;
+		position: relative;
+		margin: 20px 0;
+	}
+
+	&__date-text {
+		margin-right: calc(var(--default-clickable-area) * 2);
+		content: attr(data-date);
+		padding: 4px 12px;
+		left: 50%;
+		color: var(--color-text-maxcontrast);
+		background-color: var(--color-background-dark);
+		border-radius: var(--border-radius-pill);
+	}
+
+	&:last-child {
+		margin-bottom: 16px;
+	}
+}
 </style>

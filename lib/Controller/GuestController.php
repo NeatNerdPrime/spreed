@@ -5,6 +5,8 @@ declare(strict_types=1);
  *
  * @copyright Copyright (c) 2017, Daniel Calviño Sánchez (danxuliu@gmail.com)
  *
+ * @author Kate Döen <kate.doeen@nextcloud.com>
+ *
  * @license GNU AGPL version 3 or any later version
  *
  * This program is free software: you can redistribute it and/or modify
@@ -33,18 +35,25 @@ use OCP\AppFramework\Http\DataResponse;
 use OCP\IRequest;
 
 class GuestController extends AEnvironmentAwareController {
-	private GuestManager $guestManager;
 
 	public function __construct(
 		string $appName,
 		IRequest $request,
-		GuestManager $guestManager,
+		private GuestManager $guestManager,
 	) {
 		parent::__construct($appName, $request);
-
-		$this->guestManager = $guestManager;
 	}
 
+	/**
+	 * Set the display name as a guest
+	 *
+	 * @param string $displayName New display name
+	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_FORBIDDEN|Http::STATUS_NOT_FOUND, array<empty>, array{}>
+	 *
+	 * 200: Display name updated successfully
+	 * 403: Not a guest
+	 * 404: Not a participant
+	 */
 	#[PublicPage]
 	#[RequireParticipant]
 	public function setDisplayName(string $displayName): DataResponse {

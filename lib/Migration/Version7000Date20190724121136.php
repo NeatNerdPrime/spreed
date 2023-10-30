@@ -25,18 +25,18 @@ declare(strict_types=1);
 namespace OCA\Talk\Migration;
 
 use Doctrine\DBAL\Schema\SchemaException;
-use Doctrine\DBAL\Types\Types;
 use OCP\DB\ISchemaWrapper;
 use OCP\DB\QueryBuilder\IQueryBuilder;
+use OCP\DB\Types;
 use OCP\IDBConnection;
 use OCP\Migration\IOutput;
 use OCP\Migration\SimpleMigrationStep;
 
 class Version7000Date20190724121136 extends SimpleMigrationStep {
-	protected IDBConnection $connection;
 
-	public function __construct(IDBConnection $connection) {
-		$this->connection = $connection;
+	public function __construct(
+		protected IDBConnection $connection,
+	) {
 	}
 
 	/**

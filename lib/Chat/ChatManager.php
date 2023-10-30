@@ -27,8 +27,12 @@ namespace OCA\Talk\Chat;
 use DateInterval;
 use OC\Memcache\ArrayCache;
 use OC\Memcache\NullCache;
+use OCA\Talk\Events\BeforeChatMessageSentEvent;
+use OCA\Talk\Events\BeforeSystemMessageSentEvent;
 use OCA\Talk\Events\ChatEvent;
+use OCA\Talk\Events\ChatMessageSentEvent;
 use OCA\Talk\Events\ChatParticipantEvent;
+use OCA\Talk\Events\SystemMessageSentEvent;
 use OCA\Talk\Exceptions\ParticipantNotFoundException;
 use OCA\Talk\Model\Attendee;
 use OCA\Talk\Model\Poll;
@@ -43,7 +47,6 @@ use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Collaboration\Reference\IReferenceManager;
 use OCP\Comments\IComment;
-use OCP\Comments\ICommentsManager;
 use OCP\Comments\NotFoundException;
 use OCP\EventDispatcher\IEventDispatcher;
 use OCP\ICache;
@@ -66,10 +69,15 @@ use OCP\Share\IShare;
  * pending notifications are removed if the messages are deleted.
  */
 class ChatManager {
+	/** @deprecated */
 	public const EVENT_BEFORE_SYSTEM_MESSAGE_SEND = self::class . '::preSendSystemMessage';
+	/** @deprecated */
 	public const EVENT_AFTER_SYSTEM_MESSAGE_SEND = self::class . '::postSendSystemMessage';
+	/** @deprecated */
 	public const EVENT_AFTER_MULTIPLE_SYSTEM_MESSAGE_SEND = self::class . '::postSendMultipleSystemMessage';
+	/** @deprecated */
 	public const EVENT_BEFORE_MESSAGE_SEND = self::class . '::preSendMessage';
+	/** @deprecated */
 	public const EVENT_AFTER_MESSAGE_SEND = self::class . '::postSendMessage';
 
 	public const MAX_CHAT_LENGTH = 32000;
@@ -83,53 +91,27 @@ class ChatManager {
 	public const VERB_REACTION = 'reaction';
 	public const VERB_REACTION_DELETED = 'reaction_deleted';
 
-	private CommentsManager $commentsManager;
-	private IEventDispatcher $dispatcher;
-	private IDBConnection $connection;
-	private INotificationManager $notificationManager;
-	private IManager $shareManager;
-	private RoomShareProvider $shareProvider;
-	private ParticipantService $participantService;
-	private RoomService $roomService;
-	private PollService $pollService;
-	private Notifier $notifier;
-	protected ITimeFactory $timeFactory;
 	protected ICache $cache;
 	protected ICache $unreadCountCache;
-	protected AttachmentService $attachmentService;
-	protected IReferenceManager $referenceManager;
 
 	public function __construct(
-		CommentsManager $commentsManager,
-		IEventDispatcher $dispatcher,
-		IDBConnection $connection,
-		INotificationManager $notificationManager,
-		IManager $shareManager,
-		RoomShareProvider $shareProvider,
-		ParticipantService $participantService,
-		RoomService $roomService,
-		PollService $pollService,
-		Notifier $notifier,
+		private CommentsManager $commentsManager,
+		private IEventDispatcher $dispatcher,
+		private IDBConnection $connection,
+		private INotificationManager $notificationManager,
+		private IManager $shareManager,
+		private RoomShareProvider $shareProvider,
+		private ParticipantService $participantService,
+		private RoomService $roomService,
+		private PollService $pollService,
+		private Notifier $notifier,
 		ICacheFactory $cacheFactory,
-		ITimeFactory $timeFactory,
-		AttachmentService $attachmentService,
-		IReferenceManager $referenceManager,
+		protected ITimeFactory $timeFactory,
+		protected AttachmentService $attachmentService,
+		protected IReferenceManager $referenceManager,
 	) {
-		$this->commentsManager = $commentsManager;
-		$this->dispatcher = $dispatcher;
-		$this->connection = $connection;
-		$this->notificationManager = $notificationManager;
-		$this->shareManager = $shareManager;
-		$this->shareProvider = $shareProvider;
-		$this->participantService = $participantService;
-		$this->roomService = $roomService;
-		$this->pollService = $pollService;
-		$this->notifier = $notifier;
 		$this->cache = $cacheFactory->createDistributed('talk/lastmsgid');
 		$this->unreadCountCache = $cacheFactory->createDistributed('talk/unreadcount');
-		$this->timeFactory = $timeFactory;
-		$this->attachmentService = $attachmentService;
-		$this->referenceManager = $referenceManager;
 	}
 
 	/**
@@ -185,6 +167,8 @@ class ChatManager {
 
 		$this->setMessageExpiration($chat, $comment);
 
+		$event = new BeforeSystemMessageSentEvent($chat, $comment, skipLastActivityUpdate: $shouldSkipLastMessageUpdate);
+		$this->dispatcher->dispatchTyped($event);
 		$event = new ChatEvent($chat, $comment, $shouldSkipLastMessageUpdate);
 		$this->dispatcher->dispatch(self::EVENT_BEFORE_SYSTEM_MESSAGE_SEND, $event);
 		try {
@@ -212,6 +196,8 @@ class ChatManager {
 			}
 
 			$this->dispatcher->dispatch(self::EVENT_AFTER_SYSTEM_MESSAGE_SEND, $event);
+			$event = new SystemMessageSentEvent($chat, $comment, skipLastActivityUpdate: $shouldSkipLastMessageUpdate);
+			$this->dispatcher->dispatchTyped($event);
 		} catch (NotFoundException $e) {
 		}
 		$this->cache->remove($chat->getToken());
@@ -231,12 +217,14 @@ class ChatManager {
 	 * @return IComment
 	 */
 	public function addChangelogMessage(Room $chat, string $message): IComment {
-		$comment = $this->commentsManager->create(Attendee::ACTOR_GUESTS, 'changelog', 'chat', (string) $chat->getId());
+		$comment = $this->commentsManager->create(Attendee::ACTOR_GUESTS, Attendee::ACTOR_ID_CHANGELOG, 'chat', (string) $chat->getId());
 
 		$comment->setMessage($message, self::MAX_CHAT_LENGTH);
 		$comment->setCreationDateTime($this->timeFactory->getDateTime());
-		$comment->setVerb(self::VERB_MESSAGE); // Has to be comment, so it counts as unread message
+		$comment->setVerb(self::VERB_MESSAGE); // Has to be 'comment', so it counts as unread message
 
+		$event = new BeforeSystemMessageSentEvent($chat, $comment);
+		$this->dispatcher->dispatchTyped($event);
 		$event = new ChatEvent($chat, $comment);
 		$this->dispatcher->dispatch(self::EVENT_BEFORE_SYSTEM_MESSAGE_SEND, $event);
 		try {
@@ -247,6 +235,8 @@ class ChatManager {
 			$this->unreadCountCache->clear($chat->getId() . '-');
 
 			$this->dispatcher->dispatch(self::EVENT_AFTER_SYSTEM_MESSAGE_SEND, $event);
+			$event = new SystemMessageSentEvent($chat, $comment);
+			$this->dispatcher->dispatchTyped($event);
 		} catch (NotFoundException $e) {
 		}
 		$this->cache->remove($chat->getToken());
@@ -258,7 +248,7 @@ class ChatManager {
 	 * Sends a new message to the given chat.
 	 *
 	 * @param Room $chat
-	 * @param Participant $participant
+	 * @param ?Participant $participant
 	 * @param string $actorType
 	 * @param string $actorId
 	 * @param string $message
@@ -267,7 +257,7 @@ class ChatManager {
 	 * @param string $referenceId
 	 * @return IComment
 	 */
-	public function sendMessage(Room $chat, Participant $participant, string $actorType, string $actorId, string $message, \DateTime $creationDateTime, ?IComment $replyTo, string $referenceId, bool $silent): IComment {
+	public function sendMessage(Room $chat, ?Participant $participant, string $actorType, string $actorId, string $message, \DateTime $creationDateTime, ?IComment $replyTo, string $referenceId, bool $silent): IComment {
 		$comment = $this->commentsManager->create($actorType, $actorId, 'chat', (string) $chat->getId());
 		$comment->setMessage($message, self::MAX_CHAT_LENGTH);
 		$comment->setCreationDateTime($creationDateTime);
@@ -285,17 +275,27 @@ class ChatManager {
 		}
 		$this->setMessageExpiration($chat, $comment);
 
-		$event = new ChatParticipantEvent($chat, $comment, $participant, $silent);
+		$event = new BeforeChatMessageSentEvent($chat, $comment, $participant, $silent);
+		$this->dispatcher->dispatchTyped($event);
+		if ($participant instanceof Participant) {
+			$event = new ChatParticipantEvent($chat, $comment, $participant, $silent);
+		} else {
+			$event = new ChatEvent($chat, $comment, false, $silent);
+		}
 		$this->dispatcher->dispatch(self::EVENT_BEFORE_MESSAGE_SEND, $event);
 
 		$shouldFlush = $this->notificationManager->defer();
 		try {
 			$this->commentsManager->save($comment);
 
-			$this->participantService->updateLastReadMessage($participant, (int) $comment->getId());
+			if ($participant instanceof Participant) {
+				$this->participantService->updateLastReadMessage($participant, (int) $comment->getId());
+			}
 
 			// Update last_message
-			if ($comment->getActorType() !== 'bots' || $comment->getActorId() === 'changelog') {
+			if ($comment->getActorType() !== Attendee::ACTOR_BOTS
+				|| $comment->getActorId() === Attendee::ACTOR_ID_CHANGELOG
+				|| str_starts_with($comment->getActorId(), Attendee::ACTOR_BOT_PREFIX)) {
 				$this->roomService->setLastMessage($chat, $comment);
 				$this->unreadCountCache->clear($chat->getId() . '-');
 			} else {
@@ -321,6 +321,8 @@ class ChatManager {
 			$this->notifier->notifyOtherParticipant($chat, $comment, $alreadyNotifiedUsers, $silent);
 
 			$this->dispatcher->dispatch(self::EVENT_AFTER_MESSAGE_SEND, $event);
+			$event = new ChatMessageSentEvent($chat, $comment, $participant, $silent);
+			$this->dispatcher->dispatchTyped($event);
 		} catch (NotFoundException $e) {
 		}
 		$this->cache->remove($chat->getToken());
@@ -729,13 +731,13 @@ class ChatManager {
 	}
 
 	/**
-	 * Search for comments with a given content
+	 * Get messages for the given chat by ID
 	 *
 	 * @param Room $chat
 	 * @param int[] $commentIds
 	 * @return IComment[]
 	 */
-	public function getMessagesById(Room $chat, array $commentIds): array {
+	public function getMessagesForRoomById(Room $chat, array $commentIds): array {
 		$comments = $this->commentsManager->getCommentsById(array_map('strval', $commentIds));
 
 		$comments = array_filter($comments, static function (IComment $comment) use ($chat) {
@@ -744,6 +746,16 @@ class ChatManager {
 		});
 
 		return $comments;
+	}
+
+	/**
+	 * Get messages by ID
+	 *
+	 * @param int[] $commentIds
+	 * @return IComment[] Key is the message id
+	 */
+	public function getMessagesById(array $commentIds): array {
+		return $this->commentsManager->getCommentsById(array_map('strval', $commentIds));
 	}
 
 	/**
@@ -784,10 +796,16 @@ class ChatManager {
 		if (stripos($roomDisplayName, $search) !== false) {
 			return true;
 		}
-		if (strpos('all', $search) === 0) {
+		/**
+		 * @psalm-suppress InvalidLiteralArgument
+		 */
+		if (str_starts_with('all', $search)) {
 			return true;
 		}
-		if (strpos('here', $search) === 0) {
+		/**
+		 * @psalm-suppress InvalidLiteralArgument
+		 */
+		if (str_starts_with('here', $search)) {
 			return true;
 		}
 		return false;

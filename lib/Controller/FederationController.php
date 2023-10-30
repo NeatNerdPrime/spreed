@@ -5,6 +5,7 @@ declare(strict_types=1);
  * @copyright Copyright (c) 2021, Gary Kim <gary@garykim.dev>
  *
  * @author Gary Kim <gary@garykim.dev>
+ * @author Kate Döen <kate.doeen@nextcloud.com>
  *
  * @license GNU AGPL version 3 or any later version
  *
@@ -31,7 +32,9 @@ use OCA\Talk\Exceptions\UnauthorizedException;
 use OCA\Talk\Federation\FederationManager;
 use OCA\Talk\Manager;
 use OCA\Talk\Model\Invitation;
+use OCA\Talk\ResponseDefinitions;
 use OCP\AppFramework\Db\MultipleObjectsReturnedException;
+use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\OCSController;
@@ -40,31 +43,30 @@ use OCP\IRequest;
 use OCP\IUser;
 use OCP\IUserSession;
 
+/**
+ * @psalm-import-type TalkFederationInvite from ResponseDefinitions
+ */
 class FederationController extends OCSController {
-	private FederationManager $federationManager;
-
-	private Manager $talkManager;
-
-	private IUserSession $userSession;
 
 	public function __construct(
 		IRequest $request,
-		FederationManager $federationManager,
-		Manager $talkManager,
-		IUserSession $userSession,
+		private FederationManager $federationManager,
+		private Manager $talkManager,
+		private IUserSession $userSession,
 	) {
 		parent::__construct(Application::APP_ID, $request);
-		$this->federationManager = $federationManager;
-		$this->talkManager = $talkManager;
-		$this->userSession = $userSession;
 	}
 
 	/**
-	 * @param int $id
-	 * @return DataResponse
+	 * Accept a federation invites
+	 *
+	 * @param int $id ID of the share
+	 * @return DataResponse<Http::STATUS_OK, array<empty>, array{}>
 	 * @throws UnauthorizedException
 	 * @throws DBException
 	 * @throws MultipleObjectsReturnedException
+	 *
+	 * 200: Invite accepted successfully
 	 */
 	#[NoAdminRequired]
 	public function acceptShare(int $id): DataResponse {
@@ -77,11 +79,15 @@ class FederationController extends OCSController {
 	}
 
 	/**
-	 * @param int $id
-	 * @return DataResponse
+	 * Decline a federation invites
+	 *
+	 * @param int $id ID of the share
+	 * @return DataResponse<Http::STATUS_OK, array<empty>, array{}>
 	 * @throws UnauthorizedException
 	 * @throws DBException
 	 * @throws MultipleObjectsReturnedException
+	 *
+	 * 200: Invite declined successfully
 	 */
 	#[NoAdminRequired]
 	public function rejectShare(int $id): DataResponse {
@@ -93,6 +99,13 @@ class FederationController extends OCSController {
 		return new DataResponse();
 	}
 
+	/**
+	 * Get a list of federation invites
+	 *
+	 * @return DataResponse<Http::STATUS_OK, TalkFederationInvite[], array{}>
+	 *
+	 * 200: Get list of received federation invites successfully
+	 */
 	#[NoAdminRequired]
 	public function getShares(): DataResponse {
 		$user = $this->userSession->getUser();
@@ -100,17 +113,22 @@ class FederationController extends OCSController {
 			throw new UnauthorizedException();
 		}
 		$invitations = $this->federationManager->getRemoteRoomShares($user);
-		return new DataResponse(array_map(function (Invitation $invitation) {
+
+		/** @var TalkFederationInvite[] $data */
+		$data = array_filter(array_map(function (Invitation $invitation) {
 			$data = $invitation->asArray();
 
 			try {
 				$room = $this->talkManager->getRoomById($invitation->getRoomId());
 				$data['remote_token'] = $room->getRemoteToken();
 				$data['remote_server'] = $room->getRemoteServer();
-			} catch (RoomNotFoundException $exception) {
+			} catch (RoomNotFoundException) {
+				return null;
 			}
 
 			return $data;
 		}, $invitations));
+
+		return new DataResponse($data);
 	}
 }

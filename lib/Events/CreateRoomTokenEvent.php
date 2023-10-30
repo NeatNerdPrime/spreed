@@ -25,19 +25,17 @@ namespace OCA\Talk\Events;
 
 use OCP\EventDispatcher\Event;
 
+/**
+ * @deprecated
+ */
 class CreateRoomTokenEvent extends Event {
-	protected int $entropy;
-	protected string $chars;
 	protected string $token;
 
-
 	public function __construct(
-		int $entropy,
-		string $chars,
+		protected int $entropy,
+		protected string $chars,
 	) {
 		parent::__construct();
-		$this->entropy = $entropy;
-		$this->chars = $chars;
 		$this->token = '';
 	}
 

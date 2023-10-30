@@ -1,9 +1,318 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
+## 17.1.2 – 2023-10-27
+### Changed
+- Update dependencies
+
+### Fixed
+- fix(chat): Allow joining a conversation via search when a filter is active
+  [#10781](https://github.com/nextcloud/spreed/issues/10781)
+- fix(chat): Fix re-rendering of conversation data when scrolling (hover, user status, more)
+  [#10779](https://github.com/nextcloud/spreed/issues/10779)
+- fix(chat): Clear deleted messages from replies
+  [#10713](https://github.com/nextcloud/spreed/issues/10713)
+- fix(chat): Fix mentions when forwarding messages
+  [#10673](https://github.com/nextcloud/spreed/issues/10673)
+- fix(call): Increase the avatar size in calls when the video is disabled
+  [#10628](https://github.com/nextcloud/spreed/issues/10628)
+- fix(call): Fix "silent" parameter not sent again when reconnecting
+  [#10776](https://github.com/nextcloud/spreed/issues/10776)
+- fix(chat): Fix message grouping for all locales
+  [#10695](https://github.com/nextcloud/spreed/issues/10695)
+- fix(RightSidebar) update active tab on mount and conversation change
+  [#10564](https://github.com/nextcloud/spreed/issues/10564)
+- fix(sip): Fix saving the secret of the SIP bridge in the admin UI
+  [#10718](https://github.com/nextcloud/spreed/issues/10718)
+
+## 16.0.7 – 2023-10-27
+### Changed
+- Update dependencies
+
+### Fixed
+- fix(call): Fix "silent" parameter not sent again when reconnecting
+  [#10777](https://github.com/nextcloud/spreed/issues/10777)
+- fix(chat): Fix message grouping for all locales
+  [#10696](https://github.com/nextcloud/spreed/issues/10696)
+- fix(RightSidebar) update active tab on mount and conversation change
+  [#10564](https://github.com/nextcloud/spreed/issues/10564)
+- fix(sip): Fix saving the secret of the SIP bridge in the admin UI
+  [#10719](https://github.com/nextcloud/spreed/issues/10719)
+
+## 17.1.1 – 2023-09-21
+### Added
+- feat(chat): Add copy function to code blocks
+  [#10533](https://github.com/nextcloud/spreed/issues/10533)
+
+### Changed
+- Update dependencies
+
+### Fixed
+- fix(attachments): Allow to navigate between attachments in the viewer
+  [#10549](https://github.com/nextcloud/spreed/issues/10549)
+- fix(bots): Fix notifications of bot messages and reactions
+  [#10530](https://github.com/nextcloud/spreed/issues/10530)
+- fix(conversations): Keep the current conversation in filtered list
+  [#10527](https://github.com/nextcloud/spreed/issues/10527)
+- fix(page): Decouple the index controller from the executing method
+  [#10546](https://github.com/nextcloud/spreed/issues/10546)
+- fix(API): Reuse participant objects already created to reduce number of database queries
+  [#10536](https://github.com/nextcloud/spreed/issues/10536)
+
+## 16.0.6 – 2023-09-21
+### Changed
+- Update dependencies
+
+### Fixed
+- fix(chat): Fix responding with "X-Chat-Last-Common-Read" when requested by the client
+  [#10340](https://github.com/nextcloud/spreed/issues/10340)
+- fix(call): Add an option to disable background blur in call
+  [#10473](https://github.com/nextcloud/spreed/issues/10473)
+- fix(desktop): fix disabling avatar menu for desktop
+  [#10183](https://github.com/nextcloud/spreed/issues/10183)
+- fix(page): Decouple the index controller from the executing method
+  [#10547](https://github.com/nextcloud/spreed/issues/10547)
+- Fix using signaling settings while being refetched
+  [#10259](https://github.com/nextcloud/spreed/issues/10259)
+- fix(chat): clean conversation history for participants in call
+  [#10303](https://github.com/nextcloud/spreed/issues/10303)
+
+## 15.0.8 – 2023-09-21
+### Changed
+- Update dependencies
+
+### Fixed
+- fix(call): Add an option to disable background blur in call
+  [#10474](https://github.com/nextcloud/spreed/issues/10474)
+- fix(page): Decouple the index controller from the executing method
+  [#10548](https://github.com/nextcloud/spreed/issues/10548)
+- Fix using signaling settings while being refetched
+  [#10257](https://github.com/nextcloud/spreed/issues/10257)
+- fix(chat): clean conversation history for participants in call
+  [#10304](https://github.com/nextcloud/spreed/issues/10304)
+
+## 17.1.0 – 2023-09-16
+### Added
+- Add support for bots via webhooks
+  [#10139](https://github.com/nextcloud/spreed/issues/10139)
+  [#10151](https://github.com/nextcloud/spreed/issues/10151)
+- Add Markdown support for chat messages
+  [#10089](https://github.com/nextcloud/spreed/issues/10089)
+  [#10090](https://github.com/nextcloud/spreed/issues/10090)
+- Allow to filter the conversation list for unread mentions and messages
+  [#10093](https://github.com/nextcloud/spreed/issues/10093)
+- Provide an overview list of open conversations
+  [#10095](https://github.com/nextcloud/spreed/issues/10095)
+- Set a reminder to get notified about a chat messages at a later time
+  [#10104](https://github.com/nextcloud/spreed/issues/10104)
+  [#10152](https://github.com/nextcloud/spreed/issues/10152)
+  [#10155](https://github.com/nextcloud/spreed/issues/10155)
+- Show a hint when the call is running since one hour
+  [#10101](https://github.com/nextcloud/spreed/issues/10101)
+- Show the talking time of participants in the right sidebar
+  [#10145](https://github.com/nextcloud/spreed/issues/10145)
+
+### Changed
+- System messages of the same actions are now grouped
+  [#10143](https://github.com/nextcloud/spreed/issues/10143)
+- Use virtual scrolling for the conversation list to improve the performance
+  [#10297](https://github.com/nextcloud/spreed/issues/10297)
+- Cache the conversation list in the browser storage for better loading experience
+  [#10273](https://github.com/nextcloud/spreed/issues/10273)
+- Update dependencies
+
+## 17.1.0-rc.4 – 2023-08-31
+### Changed
+- chore(packaging): Ship dependencies lock files
+  [#10426](https://github.com/nextcloud/spreed/issues/10426)
+- Update dependencies
+
+### Fixed
+- fix(bots): Fix several problems with bots
+  [#10425](https://github.com/nextcloud/spreed/issues/10425)
+- feat(conversations): Persist the filter status after reload
+  [#10407](https://github.com/nextcloud/spreed/issues/10407)
+- fix(chat): Adjust parsing of NcRichContenteditable output before sending
+  [#10440](https://github.com/nextcloud/spreed/issues/10440)
+- fix(conversations): Fix arrow-key navigation in left sidebar
+  [#10418](https://github.com/nextcloud/spreed/issues/10418)
+- fix(deck): Show conversation name and highlight link in deck integration
+  [#10394](https://github.com/nextcloud/spreed/issues/10394)
+- fix(chat): Fix combined system message text with duplicated messages from yourself
+  [#10439](https://github.com/nextcloud/spreed/issues/10439)
+
+## 17.1.0-rc.3 – 2023-08-25
+### Added
+- feat(capability): Add a capability for messages being markdown
+  [#10367](https://github.com/nextcloud/spreed/issues/10367)
+- feat(bots)!: Ensure bot uniqueness and allow removing by URL
+  [#10371](https://github.com/nextcloud/spreed/issues/10371)
+
+### Changed
+- Update dependencies
+
+### Fixed
+- fix(LeftSidebar): wrong user status after scrolling
+  [#10369](https://github.com/nextcloud/spreed/issues/10369)
+- fix(changelog): Prevent duplicated changelog message by parallel requests
+  [#10366](https://github.com/nextcloud/spreed/issues/10366)
+- fix(RoomSelector): Align text vertically for open conversation list
+  [#10363](https://github.com/nextcloud/spreed/issues/10363)
+- fix(chat): Fix primary color selection on quotes
+  [#10363](https://github.com/nextcloud/spreed/issues/10363)
+- fix(LeftSidebar): adjust conversation padding and size
+  [#10359](https://github.com/nextcloud/spreed/issues/10359)
+
+## 17.1.0-rc.2 – 2023-08-24
+### Added
+- Avatars of open conversations are now shown without being a participant
+  [#10229](https://github.com/nextcloud/spreed/issues/10229)
+- Added an option to only remove a user from private conversations
+  [#10310](https://github.com/nextcloud/spreed/issues/10310)
+- Added an option to copy the original message content
+  [#10335](https://github.com/nextcloud/spreed/issues/10335)
+
+### Changed
+- Use virtual scrolling for the conversation list to improve the performance
+  [#10297](https://github.com/nextcloud/spreed/issues/10297)
+- Cache the conversation list in the browser storage for better loading experience
+  [#10273](https://github.com/nextcloud/spreed/issues/10273)
+- Update dependencies
+
+### Fixed
+- Allow replying to messages of bots
+  [#10219](https://github.com/nextcloud/spreed/issues/10219)
+- Fix sending system messages to bots
+  [#10271](https://github.com/nextcloud/spreed/issues/10271)
+- Fix style of Markdown code blocks, headlines and quotes
+  [#10221](https://github.com/nextcloud/spreed/issues/10221)
+  [#10238](https://github.com/nextcloud/spreed/issues/10238)
+  [#10255](https://github.com/nextcloud/spreed/issues/10255)
+- Fix recording option shown for non moderators
+  [#10246](https://github.com/nextcloud/spreed/issues/10246)
+- Apply selected call background only once confirmed
+  [#10267](https://github.com/nextcloud/spreed/issues/10267)
+- Clear chat history for other participants that are live when the moderator performs the action
+  [#10302](https://github.com/nextcloud/spreed/issues/10302)
+- Add missing capability that indicates bots are supported
+  [#10314](https://github.com/nextcloud/spreed/issues/10314)
+- Don't add parent messages of quotes to the message list which could create gaps in the history
+  [#10318](https://github.com/nextcloud/spreed/issues/10318)
+- Fix missing `X-Chat-Last-Common-Read` header on chat requests
+  [#10337](https://github.com/nextcloud/spreed/issues/10337)
+
+## 17.1.0-rc.1 – 2023-08-11
+### Added
+- Add support for bots via webhooks
+  [#10139](https://github.com/nextcloud/spreed/issues/10139)
+  [#10151](https://github.com/nextcloud/spreed/issues/10151)
+- Add Markdown support for chat messages
+  [#10089](https://github.com/nextcloud/spreed/issues/10089)
+  [#10090](https://github.com/nextcloud/spreed/issues/10090)
+- Allow to filter the conversation list for unread mentions and messages
+  [#10093](https://github.com/nextcloud/spreed/issues/10093)
+- Provide an overview list of open conversations
+  [#10095](https://github.com/nextcloud/spreed/issues/10095)
+- Set a reminder to get notified about a chat messages at a later time
+  [#10104](https://github.com/nextcloud/spreed/issues/10104)
+  [#10152](https://github.com/nextcloud/spreed/issues/10152)
+  [#10155](https://github.com/nextcloud/spreed/issues/10155)
+- Show a hint when the call is running since one hour
+  [#10101](https://github.com/nextcloud/spreed/issues/10101)
+- Show the talking time of participants in the right sidebar
+  [#10145](https://github.com/nextcloud/spreed/issues/10145)
+
+### Changed
+- System messages of the same actions are now grouped
+  [#10143](https://github.com/nextcloud/spreed/issues/10143)
+- Update dependencies
+
+### Fixed
+- Fix resetting the bruteforce protection when joining a conversation
+  [#10165](https://github.com/nextcloud/spreed/issues/10165)
+
+## 17.0.3 – 2023-07-28
+### Changed
+- Update dependencies
+
+### Fixed
+- Fix duplicate messages and improve performance
+  [#10070](https://github.com/nextcloud/spreed/issues/10070)
+- fix(SIP): Show SIP info also when enabled without user PIN
+  [#10064](https://github.com/nextcloud/spreed/issues/10064)
+- fix(settings): Hide description and status from 1-1 conversation settings
+  [#10057](https://github.com/nextcloud/spreed/issues/10057)
+
+## 17.0.2 – 2023-07-20
+### Changed
+- Automatic transcription of call recordings is now opt-in
+  [#9971](https://github.com/nextcloud/spreed/issues/9971)
+- Update dependencies
+
+### Fixed
+- Fix position of "Scroll to bottom" button in the chat view
+  [#9871](https://github.com/nextcloud/spreed/issues/9871)
+  [#9858](https://github.com/nextcloud/spreed/issues/9858)
+- Improve accessibility of conversation creation dialog
+  [#9954](https://github.com/nextcloud/spreed/issues/9954)
+- Make chat stay scrolling when the last message receives its first reaction
+  [#9956](https://github.com/nextcloud/spreed/issues/9956)
+- Don't emit event when the user status did not change on refetching
+  [#10005](https://github.com/nextcloud/spreed/issues/10005)
+- Attempt to further improve the performance of conversation list updates with hundreds of conversations 
+  [#10016](https://github.com/nextcloud/spreed/issues/10016)
+
+## 16.0.5 – 2023-07-20
+### Changed
+- Close sidebar on mobile resolution after changing the route
+  [#9764](https://github.com/nextcloud/spreed/issues/9764)
+
+### Fixed
+- Make chat stay scrolling when the last message receives its first reaction
+  [#9957](https://github.com/nextcloud/spreed/issues/9957)
+- Improve call view video size calculation
+  [#9836](https://github.com/nextcloud/spreed/issues/9836)
+- Update group displayname when a group is renamed
+  [#9840](https://github.com/nextcloud/spreed/issues/9840)
+- Don't make the conversation list scroll when the selected conversation is already visible
+  [#9785](https://github.com/nextcloud/spreed/issues/9785)
+- Make conversation name and description selectable
+  [#9781](https://github.com/nextcloud/spreed/issues/9781)
+
+## 15.0.7 – 2023-07-20
+### Fixed
+- Make conversation name and description selectable
+  [#9784](https://github.com/nextcloud/spreed/issues/9784)
+
+## 17.0.1 – 2023-06-23
+### Changed
+- Include display name in participant update signaling message
+  [#9822](https://github.com/nextcloud/spreed/issues/9822)
+- Update dependencies
+
+### Fixed
+- Improve frontend responsiveness with many conversations
+  [#9841](https://github.com/nextcloud/spreed/issues/9841)
+- Don't make the conversation list scroll when the selected conversation is already visible
+  [#9782](https://github.com/nextcloud/spreed/issues/9782)
+  [#9796](https://github.com/nextcloud/spreed/issues/9796)
+- Fix creating files from the "Blank" template option
+  [#9818](https://github.com/nextcloud/spreed/issues/9818)
+- Make conversation description and name selectable
+  [#9780](https://github.com/nextcloud/spreed/issues/9780)
+- Hide poll voting details when not filled
+  [#9821](https://github.com/nextcloud/spreed/issues/9821)
+  [#9819](https://github.com/nextcloud/spreed/issues/9819)
+- Fix visibility issue in the create conversation dialog on small screens
+  [#9794](https://github.com/nextcloud/spreed/issues/9794)
+  [#9843](https://github.com/nextcloud/spreed/issues/9843)
+- Include display name in participant update signaling message
+  [#9822](https://github.com/nextcloud/spreed/issues/9822)
+- Update group displayname cache when the group was renamed
+  [#9839](https://github.com/nextcloud/spreed/issues/9839)
+
 ## 17.0.0 – 2023-06-12
 ### Added
-
 - Conversations can now have an avatar or emoji as icon
   [#927](https://github.com/nextcloud/spreed/issues/927)
 - Virtual backgrounds are now available in addition to the blurred background in video calls

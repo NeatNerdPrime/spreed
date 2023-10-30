@@ -3,7 +3,7 @@
   -
   - @author Marco Ambrosini <marcoambrosini@icloud.com>
   -
-  - @license GNU AGPL version 3 or any later version
+  - @license AGPL-3.0-or-later
   -
   - This program is free software: you can redistribute it and/or modify
   - it under the terms of the GNU Affero General Public License as
@@ -20,48 +20,44 @@
 -->
 
 <template>
-	<div class="message-group">
-		<div v-if="dateSeparator"
-			class="message-group__date-header">
-			<span class="date"
-				role="heading"
-				aria-level="3">{{ dateSeparator }}</span>
+	<div class="wrapper">
+		<div class="messages__avatar">
+			<AvatarWrapper :id="actorId"
+				:name="actorDisplayName"
+				:source="actorType"
+				:size="AVATAR.SIZE.SMALL"
+				:disable-menu="disableMenu"
+				disable-tooltip />
 		</div>
-		<div class="wrapper"
-			:class="{'wrapper--system': isSystemMessage}">
-			<div v-if="!isSystemMessage" class="messages__avatar">
-				<AuthorAvatar :author-type="actorType"
-					:author-id="actorId"
-					:display-name="actorDisplayName" />
-			</div>
-			<ul class="messages">
-				<Message v-for="(message, index) of messages"
-					:key="message.id"
-					v-bind="message"
-					:is-first-message="index === 0"
-					:next-message-id="(messages[index + 1] && messages[index + 1].id) || nextMessageId"
-					:previous-message-id="(index > 0 && messages[index - 1].id) || previousMessageId"
-					:actor-type="actorType"
-					:actor-id="actorId"
-					:actor-display-name="actorDisplayName"
-					:show-author="!isSystemMessage"
-					:is-temporary="message.timestamp === 0" />
-			</ul>
-		</div>
+		<ul class="messages">
+			<li class="messages__author" aria-level="4">
+				{{ actorDisplayName }}
+			</li>
+			<Message v-for="(message, index) of messages"
+				:key="message.id"
+				ref="message"
+				v-bind="message"
+				:is-temporary="message.timestamp === 0"
+				:next-message-id="(messages[index + 1] && messages[index + 1].id) || nextMessageId"
+				:previous-message-id="(index > 0 && messages[index - 1].id) || previousMessageId"
+				:actor-type="actorType"
+				:actor-id="actorId" />
+		</ul>
 	</div>
 </template>
 
 <script>
-import AuthorAvatar from './AuthorAvatar.vue'
+import AvatarWrapper from '../../AvatarWrapper/AvatarWrapper.vue'
 import Message from './Message/Message.vue'
 
-import { ATTENDEE } from '../../../constants.js'
+import { ATTENDEE, AVATAR } from '../../../constants.js'
+import { useGuestNameStore } from '../../../stores/guestName.js'
 
 export default {
 	name: 'MessagesGroup',
 
 	components: {
-		AuthorAvatar,
+		AvatarWrapper,
 		Message,
 	},
 	inheritAttrs: false,
@@ -93,6 +89,13 @@ export default {
 		},
 	},
 
+	setup() {
+		const guestNameStore = useGuestNameStore()
+		return { AVATAR, guestNameStore }
+	},
+
+	expose: ['highlightMessage'],
+
 	computed: {
 		/**
 		 * The message actor type.
@@ -111,14 +114,6 @@ export default {
 			return this.messages[0].actorId
 		},
 		/**
-		 * The message date.
-		 *
-		 * @return {string}
-		 */
-		dateSeparator() {
-			return this.messages[0].dateSeparator || ''
-		},
-		/**
 		 * The message actor display name.
 		 *
 		 * @return {string}
@@ -127,7 +122,7 @@ export default {
 			const displayName = this.messages[0].actorDisplayName.trim()
 
 			if (this.actorType === ATTENDEE.ACTOR_TYPE.GUESTS) {
-				return this.$store.getters.getGuestName(this.token, this.actorId)
+				return this.guestNameStore.getGuestName(this.token, this.actorId)
 			}
 
 			if (displayName === '') {
@@ -136,13 +131,22 @@ export default {
 
 			return displayName
 		},
-		/**
-		 * Whether the given message is a system message
-		 *
-		 * @return {boolean}
-		 */
-		isSystemMessage() {
-			return this.messages[0].systemMessage.length !== 0
+
+		disableMenu() {
+			// disable the menu if accessing the conversation as guest
+			// or the message sender is a bridged user
+			return this.$store.getters.getActorType() === 'guests' || this.actorType === ATTENDEE.ACTOR_TYPE.BRIDGED
+		},
+	},
+
+	methods: {
+		highlightMessage(messageId) {
+			for (const message of this.$refs.message) {
+				if (message.id === messageId) {
+					message.highlightMessage()
+					break
+				}
+			}
 		},
 	},
 }
@@ -151,33 +155,12 @@ export default {
 <style lang="scss" scoped>
 @import '../../../assets/variables';
 
-.message-group {
-	&__date-header {
-		display: block;
-		text-align: center;
-		padding-top: 20px;
-		position: relative;
-		margin: 20px 0;
-		.date {
-			margin-right: $clickable-area * 2;
-			content: attr(data-date);
-			padding: 4px 12px;
-			left: 50%;
-			color: var(--color-text-maxcontrast);
-			background-color: var(--color-background-dark);
-			border-radius: var(--border-radius-pill);
-		}
-	}
-}
-
 .wrapper {
 	max-width: $messages-list-max-width;
 	display: flex;
 	margin: auto;
 	padding: 0;
-	&--system {
-		padding-left: $clickable-area + 8px;
-	}
+
 	&:focus {
 		background-color: rgba(47, 47, 47, 0.068);
 	}
@@ -190,12 +173,18 @@ export default {
 	flex-direction: column;
 	width: 100%;
 	min-width: 0;
+
 	&__avatar {
 		position: sticky;
 		top: 0;
 		height: 52px;
 		width: 52px;
 		padding: 18px 10px 10px 10px;
+	}
+
+	&__author {
+		padding: 4px 0 0 8px;
+		color: var(--color-text-maxcontrast);
 	}
 }
 </style>

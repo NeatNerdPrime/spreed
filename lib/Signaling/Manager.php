@@ -34,20 +34,14 @@ use OCP\IConfig;
 class Manager {
 	public const FEATURE_HEADER = 'X-Spreed-Signaling-Features';
 
-	protected IConfig $serverConfig;
-	protected Config $talkConfig;
-	protected RoomService $roomService;
 	protected ICache $cache;
 
 	public function __construct(
-		IConfig $serverConfig,
-		Config $talkConfig,
-		RoomService $roomService,
+		protected IConfig $serverConfig,
+		protected Config $talkConfig,
+		protected RoomService $roomService,
 		ICacheFactory $cacheFactory,
 	) {
-		$this->serverConfig = $serverConfig;
-		$this->talkConfig = $talkConfig;
-		$this->roomService = $roomService;
 		$this->cache = $cacheFactory->createDistributed('hpb_servers');
 	}
 
@@ -59,6 +53,16 @@ class Manager {
 			&& in_array('incall-all', $features, true)
 			&& in_array('hello-v2', $features, true)
 			&& in_array('switchto', $features, true);
+	}
+
+	public function getSignalingServerMissingFeatures(IResponse $response): array {
+		$featureHeader = $response->getHeader(self::FEATURE_HEADER);
+		$features = explode(',', $featureHeader);
+		$features = array_map('trim', $features);
+
+		return array_values(array_diff([
+			'dialout',
+		], $features));
 	}
 
 	public function getSignalingServerLinkForConversation(?Room $room): string {

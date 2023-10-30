@@ -1,6 +1,7 @@
 import { createLocalVue, mount, shallowMount } from '@vue/test-utils'
 import flushPromises from 'flush-promises' // TODO fix after migration to @vue/test-utils v2.0.0
 import { cloneDeep } from 'lodash'
+import { createPinia, setActivePinia } from 'pinia'
 import vOutsideEvents from 'vue-outside-events'
 import Vuex, { Store } from 'vuex'
 
@@ -57,6 +58,7 @@ describe('Message.vue', () => {
 		localVue = createLocalVue()
 		localVue.use(vOutsideEvents)
 		localVue.use(Vuex)
+		setActivePinia(createPinia())
 
 		conversationProps = {
 			token: TOKEN,
@@ -77,6 +79,7 @@ describe('Message.vue', () => {
 				bottom: 0,
 				left: 0,
 			},
+			getMessagesListScroller: jest.fn(),
 		}
 
 		testStoreConfig = cloneDeep(storeConfig)
@@ -106,20 +109,6 @@ describe('Message.vue', () => {
 			systemMessage: '',
 			messageType: 'comment',
 		}
-
-		// Dummy message getter so that the message component is always
-		// properly mounted.
-		testStoreConfig.modules.messagesStore.getters.message
-			= jest.fn().mockReturnValue(() => {
-				return {
-					reactions: '',
-				}
-			})
-
-		// Dummy hasReactions getter so that the message component is always
-		// properly mounted.
-		testStoreConfig.modules.messagesStore.getters.hasReactions
-			= jest.fn().mockReturnValue(() => false)
 	})
 
 	afterEach(() => {
@@ -294,10 +283,9 @@ describe('Message.vue', () => {
 				actorType: ATTENDEE.ACTOR_TYPE.USERS,
 				messageParameters: {},
 				token: TOKEN,
-				parentId: -1,
 				reactions: '',
 			}
-			messageProps.parent = 120
+			messageProps.parent = parentMessage
 
 			const messageGetterMock = jest.fn().mockReturnValue(parentMessage)
 			testStoreConfig.modules.messagesStore.getters.message = jest.fn(() => messageGetterMock)
@@ -309,9 +297,6 @@ describe('Message.vue', () => {
 				propsData: messageProps,
 				provide: injected,
 			})
-
-			// parent message got queried from the store
-			expect(messageGetterMock).toHaveBeenCalledWith(TOKEN, 120)
 
 			const quote = wrapper.findComponent(Quote)
 			expect(quote.exists()).toBe(true)
@@ -339,7 +324,8 @@ describe('Message.vue', () => {
 
 				const messageEl = wrapper.findComponent({ name: 'NcRichText' })
 				// note: indices as object keys are on purpose
-				expect(messageEl.props('arguments')).toStrictEqual(expectedRichParameters)
+				expect(messageEl.props('arguments')).toMatchObject(expectedRichParameters)
+				return messageEl
 			}
 
 			test('renders mentions', () => {
@@ -379,7 +365,7 @@ describe('Message.vue', () => {
 				)
 			})
 
-			test('renders file previews', () => {
+			test('renders single file preview', () => {
 				const params = {
 					actor: {
 						id: 'alice',
@@ -404,6 +390,36 @@ describe('Message.vue', () => {
 						},
 					}
 				)
+			})
+
+			test('renders single file preview with caption', () => {
+				const caption = 'text caption'
+				const params = {
+					actor: {
+						id: 'alice',
+						name: 'Alice',
+						type: 'user',
+					},
+					file: {
+						path: 'some/path',
+						type: 'file',
+					},
+				}
+				const messageEl = renderRichObject(
+					caption,
+					params, {
+						actor: {
+							component: Mention,
+							props: params.actor,
+						},
+						file: {
+							component: FilePreview,
+							props: params.file,
+						},
+					}
+				)
+
+				expect(messageEl.props('text')).toBe('{file}' + '\n\n' + caption)
 			})
 
 			test('renders deck cards', () => {
@@ -530,39 +546,6 @@ describe('Message.vue', () => {
 
 			const marker = wrapper.find('.new-message-marker')
 			expect(marker.exists()).toBe(false)
-		})
-	})
-
-	describe('author rendering', () => {
-		const AUTHOR_SELECTOR = '.message-body__author'
-		beforeEach(() => {
-			store = new Store(testStoreConfig)
-		})
-
-		test('renders author if first message', async () => {
-			messageProps.isFirstMessage = true
-			const wrapper = shallowMount(Message, {
-				localVue,
-				store,
-				propsData: messageProps,
-				provide: injected,
-			})
-
-			const displayName = wrapper.find(AUTHOR_SELECTOR)
-			expect(displayName.text()).toBe('user-display-name-1')
-		})
-
-		test('does not render author if not first message', async () => {
-			messageProps.isFirstMessage = false
-			const wrapper = shallowMount(Message, {
-				localVue,
-				store,
-				propsData: messageProps,
-				provide: injected,
-			})
-
-			const displayName = wrapper.find(AUTHOR_SELECTOR)
-			expect(displayName.exists()).toBe(false)
 		})
 	})
 
@@ -810,37 +793,13 @@ describe('Message.vue', () => {
 
 	describe('reactions', () => {
 		beforeEach(() => {
-			testStoreConfig.modules.messagesStore.getters.message
-				= jest.fn().mockReturnValue(() => {
-					return {
-						reactions: {
-							'❤️': 1,
-							'👍': 7,
-						},
-						id: messageProps.id,
-					}
-				})
-			testStoreConfig.modules.messagesStore.getters.hasReactions
-				= jest.fn().mockReturnValue(() => {
-					return true
-				})
+			messageProps.reactions = { '❤️': 1, '👍': 7 }
+			messageProps.reactionsSelf = ['👍']
 			store = new Store(testStoreConfig)
 		})
 
-		test('properly shows reactions', () => {
-			const wrapper = shallowMount(Message, {
-				localVue,
-				store,
-				propsData: messageProps,
-				provide: injected,
-			})
-
-			const reactionsBar = wrapper.find('.message-body__reactions')
-			expect(reactionsBar.isVisible()).toBe(true)
-
-		})
-
-		test('shows reaction buttons with the right emoji count', () => {
+		test('shows reaction buttons with count and emoji picker', () => {
+			// Arrange
 			const wrapper = shallowMount(Message, {
 				localVue,
 				store,
@@ -851,21 +810,15 @@ describe('Message.vue', () => {
 				},
 			})
 
-			const reactionsBar = wrapper.find('.message-body__reactions')
-
-			// Array of buttons
-			const reactionButtons = reactionsBar.findAll('.reaction-button')
-
-			// Number of buttons, 2 passed into the getter and 1 is the emoji
-			// picker
-			expect(reactionButtons.length).toBe(3)
-
-			// Text of the buttons
-			expect(reactionButtons.wrappers[0].text()).toBe('❤️ 1')
-			expect(reactionButtons.wrappers[1].text()).toBe('👍 7')
+			// Assert
+			const reactionButtons = wrapper.findAllComponents({ name: 'NcButton' })
+			expect(reactionButtons).toHaveLength(3) // 2 for reactions and 1 for emoji picker
+			expect(reactionButtons.at(0).text()).toBe('❤️ 1')
+			expect(reactionButtons.at(1).text()).toBe('👍 7')
 		})
 
-		test('shows reaction buttons with the right emoji count but without emoji placeholder when no chat permission', () => {
+		test('shows reaction buttons with count but without emoji picker when no chat permission', () => {
+			// Arrange
 			const conversationProps = {
 				token: TOKEN,
 				lastCommonReadMessage: 0,
@@ -887,23 +840,16 @@ describe('Message.vue', () => {
 				},
 			})
 
-			const reactionsBar = wrapper.find('.message-body__reactions')
-
-			// Array of buttons
-			const reactionButtons = reactionsBar.findAll('.reaction-button')
-
-			// Number of buttons, 2 passed into the getter and 1 is the emoji
-			// picker
-			expect(reactionButtons.length).toBe(2)
-
-			// Text of the buttons
-			expect(reactionButtons.wrappers[0].text()).toBe('❤️ 1')
-			expect(reactionButtons.wrappers[1].text()).toBe('👍 7')
+			// Assert
+			const reactionButtons = wrapper.findAllComponents({ name: 'NcButton' })
+			expect(reactionButtons).toHaveLength(2) // 2 for reactions
+			expect(reactionButtons.at(0).text()).toBe('❤️ 1')
+			expect(reactionButtons.at(1).text()).toBe('👍 7')
 		})
 
-		test('no emoji picker is mounted when the bottom bar is not shown', () => {
-			store = new Store(testStoreConfig)
-
+		test('doesn\'t mount emoji picker when there are no reactions', () => {
+			// Arrange
+			messageProps.reactions = { }
 			const wrapper = shallowMount(Message, {
 				localVue,
 				store,
@@ -914,29 +860,26 @@ describe('Message.vue', () => {
 				},
 			})
 
+			// Assert
+			const reactionButtons = wrapper.findAllComponents({ name: 'NcButton' })
+			expect(reactionButtons).toHaveLength(0)
 			const emojiPicker = wrapper.findComponent(NcEmojiPicker)
-
+			expect(emojiPicker.exists()).toBeFalsy()
 			expect(emojiPicker.vm).toBeUndefined()
 		})
 
-		test('dispatches store action upon picking an emoji from the emojipicker', () => {
+		test('dispatches store actions upon picking an emoji from the emojipicker', () => {
+			// Arrange
 			const addReactionToMessageAction = jest.fn()
-			const userHasReactedGetter = jest.fn().mockReturnValue(() => false)
-			const reactionsLoadedGetter = jest.fn().mockReturnValue(() => true)
+			const removeReactionFromMessageAction = jest.fn()
 			testStoreConfig.modules.messagesStore.actions.addReactionToMessage = addReactionToMessageAction
-			testStoreConfig.modules.reactionsStore.getters.userHasReacted = userHasReactedGetter
-			testStoreConfig.modules.reactionsStore.getters.reactionsLoaded = reactionsLoadedGetter
-
+			testStoreConfig.modules.messagesStore.actions.removeReactionFromMessage = removeReactionFromMessageAction
 			store = new Store(testStoreConfig)
-
-			const messagePropsWithReactions = Object.assign({}, messageProps)
-			messagePropsWithReactions.reactions = { '👍': 1 }
-			messagePropsWithReactions.reactionsSelf = ['👍']
 
 			const wrapper = shallowMount(Message, {
 				localVue,
 				store,
-				propsData: messagePropsWithReactions,
+				propsData: messageProps,
 				provide: injected,
 				stubs: {
 					NcEmojiPicker,
@@ -950,55 +893,62 @@ describe('Message.vue', () => {
 				}],
 			})
 
+			// Act
 			const emojiPicker = wrapper.findComponent(NcEmojiPicker)
-
 			emojiPicker.vm.$emit('select', '❤️')
+			emojiPicker.vm.$emit('select', '👍')
 
+			// Assert
 			expect(addReactionToMessageAction).toHaveBeenCalledWith(expect.anything(), {
 				token: messageProps.token,
 				messageId: messageProps.id,
 				selectedEmoji: '❤️',
 				actorId: messageProps.actorId,
 			})
-
+			expect(removeReactionFromMessageAction).toHaveBeenCalledWith(expect.anything(), {
+				token: messageProps.token,
+				messageId: messageProps.id,
+				selectedEmoji: '👍',
+				actorId: messageProps.actorId,
+			})
 		})
 
-		test('dispatches store action to remove an emoji upon clicking reaction button', async () => {
+		test('dispatches store actions upon clicking a reaction buttons', () => {
+			// Arrange
+			const addReactionToMessageAction = jest.fn()
 			const removeReactionFromMessageAction = jest.fn()
-			const userHasReactedGetter = jest.fn().mockReturnValue(() => true)
-			const reactionsLoadedGetter = jest.fn().mockReturnValue(() => true)
+			testStoreConfig.modules.messagesStore.actions.addReactionToMessage = addReactionToMessageAction
 			testStoreConfig.modules.messagesStore.actions.removeReactionFromMessage = removeReactionFromMessageAction
-			testStoreConfig.modules.reactionsStore.getters.userHasReacted = userHasReactedGetter
-			testStoreConfig.modules.reactionsStore.getters.reactionsLoaded = reactionsLoadedGetter
-
 			store = new Store(testStoreConfig)
-
-			const messagePropsWithReactions = Object.assign({}, messageProps)
-			messagePropsWithReactions.reactions = { '❤️': 1 }
-			messagePropsWithReactions.reactionsSelf = ['❤️']
 
 			const wrapper = shallowMount(Message, {
 				localVue,
 				store,
-				propsData: messagePropsWithReactions,
+				propsData: messageProps,
 				provide: injected,
 				stubs: {
 					NcPopover: NcPopoverStub,
 				},
 			})
 
-			// Click reaction button upon having already reacted
-			wrapper.find('.reaction-button').getComponent(NcButton).vm.$emit('click')
+			// Act
+			const reactionButtons = wrapper.findAllComponents({ name: 'NcButton' })
+			reactionButtons.at(0).vm.$emit('click') // ❤️
+			reactionButtons.at(1).vm.$emit('click') // 👍
 
-			await flushPromises()
-
-			expect(removeReactionFromMessageAction).toHaveBeenCalledWith(expect.anything(), {
+			// Assert
+			expect(addReactionToMessageAction).toHaveBeenCalledWith(expect.anything(), {
 				token: messageProps.token,
 				messageId: messageProps.id,
 				selectedEmoji: '❤️',
 				actorId: messageProps.actorId,
 			})
-
+			expect(removeReactionFromMessageAction).toHaveBeenCalledWith(expect.anything(), {
+				token: messageProps.token,
+				messageId: messageProps.id,
+				selectedEmoji: '👍',
+				actorId: messageProps.actorId,
+			})
 		})
 	})
 })

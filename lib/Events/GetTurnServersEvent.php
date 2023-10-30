@@ -25,12 +25,15 @@ namespace OCA\Talk\Events;
 
 use OCP\EventDispatcher\Event;
 
+/**
+ * @deprecated
+ */
 class GetTurnServersEvent extends Event {
-	protected array $servers;
 
-	public function __construct(array $servers) {
+	public function __construct(
+		protected array $servers
+	) {
 		parent::__construct();
-		$this->servers = $servers;
 	}
 
 	public function getServers(): array {

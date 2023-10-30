@@ -62,7 +62,7 @@ class AvatarService {
 			throw new InvalidArgumentException($this->l->t('One-to-one rooms always need to show the other users avatar'));
 		}
 
-		if (is_null($file) || !is_array($file)) {
+		if ($file === null) {
 			throw new InvalidArgumentException($this->l->t('No image file provided'));
 		}
 
@@ -292,14 +292,17 @@ class AvatarService {
 		if ($room->getType() === Room::TYPE_CHANGELOG) {
 			return __DIR__ . '/../../img/changelog.svg';
 		}
-		if ($room->getObjectType() === 'file') {
+		if ($room->getObjectType() === Room::OBJECT_TYPE_FILE) {
 			return __DIR__ . '/../../img/icon-conversation-text-' . $colorTone . '.svg';
 		}
-		if ($room->getObjectType() === 'share:password') {
+		if ($room->getObjectType() === Room::OBJECT_TYPE_VIDEO_VERIFICATION) {
 			return __DIR__ . '/../../img/icon-conversation-password-' . $colorTone . '.svg';
 		}
-		if ($room->getObjectType() === 'emails') {
+		if ($room->getObjectType() === Room::OBJECT_TYPE_EMAIL) {
 			return __DIR__ . '/../../img/icon-conversation-mail-' . $colorTone . '.svg';
+		}
+		if ($room->getObjectType() === Room::OBJECT_TYPE_PHONE) {
+			return __DIR__ . '/../../img/icon-conversation-phone-' . $colorTone . '.svg';
 		}
 		if ($room->getType() === Room::TYPE_PUBLIC) {
 			return __DIR__ . '/../../img/icon-conversation-public-' . $colorTone . '.svg';

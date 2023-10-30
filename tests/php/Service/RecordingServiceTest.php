@@ -49,6 +49,7 @@ use OCA\Talk\Service\RoomService;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Files\IMimeTypeDetector;
 use OCP\Files\IRootFolder;
+use OCP\IConfig;
 use OCP\Notification\IManager;
 use OCP\Share\IManager as ShareManager;
 use OCP\SpeechToText\ISpeechToTextManager;
@@ -65,6 +66,8 @@ class RecordingServiceTest extends TestCase {
 	private $rootFolder;
 	/** @var Config|MockObject */
 	private $config;
+	/** @var IConfig|MockObject */
+	private $serverConfig;
 	/** @var IManager|MockObject */
 	private $notificationManager;
 	/** @var Manager|MockObject */
@@ -95,6 +98,7 @@ class RecordingServiceTest extends TestCase {
 		$this->roomManager = $this->createMock(Manager::class);
 		$this->timeFactory = $this->createMock(ITimeFactory::class);
 		$this->config = $this->createMock(Config::class);
+		$this->serverConfig = $this->createMock(IConfig::class);
 		$this->roomService = $this->createMock(RoomService::class);
 		$this->shareManager = $this->createMock(ShareManager::class);
 		$this->chatManager = $this->createMock(ChatManager::class);
@@ -110,6 +114,7 @@ class RecordingServiceTest extends TestCase {
 			$this->roomManager,
 			$this->timeFactory,
 			$this->config,
+			$this->serverConfig,
 			$this->roomService,
 			$this->shareManager,
 			$this->chatManager,
@@ -129,7 +134,7 @@ class RecordingServiceTest extends TestCase {
 		$this->recordingService->validateFileFormat($fileName, $fileRealPath);
 	}
 
-	public function dataValidateFileFormat(): array {
+	public static function dataValidateFileFormat(): array {
 		return [
 			# file_invalid_path
 			['', '', 'file_invalid_path'],
@@ -164,7 +169,7 @@ class RecordingServiceTest extends TestCase {
 		$this->assertEquals($expected, $actual);
 	}
 
-	public function dataGetResourceFromFileArray(): array {
+	public static function dataGetResourceFromFileArray(): array {
 		$fileWithContent = tempnam(sys_get_temp_dir(), 'txt');
 		file_put_contents($fileWithContent, 'bla');
 		return [

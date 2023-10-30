@@ -26,7 +26,6 @@ namespace OCA\Talk\Share\Helper;
 
 use OCA\Talk\Exceptions\RoomNotFoundException;
 use OCA\Talk\Manager;
-use OCA\Talk\Room;
 use OCP\Share\IShare;
 
 /**
@@ -37,15 +36,11 @@ use OCP\Share\IShare;
  * perform actions or checks specific to room shares.
  */
 class DeletedShareAPIController {
-	private string $userId;
-	private Manager $manager;
 
 	public function __construct(
-		string $UserId,
-		Manager $manager,
+		private string $userId,
+		private Manager $manager,
 	) {
-		$this->userId = $UserId;
-		$this->manager = $manager;
 	}
 
 	/**

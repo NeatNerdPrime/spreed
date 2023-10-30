@@ -43,24 +43,25 @@ Base endpoint is: `/ocs/v2.php/apps/spreed/api/v1`: since Nextcloud 13
     - Data:
         Array of messages, each message has at least:
 
-| field                  | type     | Description                                                                                                                                                            |
-|------------------------|----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `id`                   | int      | ID of the comment                                                                                                                                                      |
-| `token`                | string   | Conversation token                                                                                                                                                     |
-| `actorType`            | string   | See [Constants - Actor types of chat messages](constants.md#actor-types-of-chat-messages)                                                                              |
-| `actorId`              | string   | Actor id of the message author                                                                                                                                         |
-| `actorDisplayName`     | string   | Display name of the message author                                                                                                                                     |
-| `timestamp`            | int      | Timestamp in seconds and UTC time zone                                                                                                                                 |
-| `systemMessage`        | string   | empty for normal chat message or the type of the system message (untranslated)                                                                                         |
-| `messageType`          | string   | Currently known types are `comment`, `comment_deleted`, `system` and `command`                                                                                         |
-| `isReplyable`          | bool     | True if the user can post a reply to this message (only available with `chat-replies` capability)                                                                      |
-| `referenceId`          | string   | A reference string that was given while posting the message to be able to identify a sent message again (only available with `chat-reference-id` capability)           |
-| `message`              | string   | Message string with placeholders (see [Rich Object String](https://github.com/nextcloud/server/issues/1706))                                                           |
-| `messageParameters`    | array    | Message parameters for `message` (see [Rich Object String](https://github.com/nextcloud/server/issues/1706))                                                           |
-| `expirationTimestamp`  | int      | Unix time stamp when the message expires and show be removed from the clients UI without further note or warning (only available with `message-expiration` capability) |
-| `parent`               | array    | **Optional:** See `Parent data` below                                                                                                                                  |
-| `reactions`            | int[]    | **Optional:** An array map with relation between reaction emoji and total count of reactions with this emoji                                                           |
-| `reactionsSelf`        | string[] | **Optional:** When the user reacted this is the list of emojis the user reacted with                                                                                   |
+| field                 | type     | Description                                                                                                                                                            |
+|-----------------------|----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `id`                  | int      | ID of the comment                                                                                                                                                      |
+| `token`               | string   | Conversation token                                                                                                                                                     |
+| `actorType`           | string   | See [Constants - Actor types of chat messages](constants.md#actor-types-of-chat-messages)                                                                              |
+| `actorId`             | string   | Actor id of the message author                                                                                                                                         |
+| `actorDisplayName`    | string   | Display name of the message author                                                                                                                                     |
+| `timestamp`           | int      | Timestamp in seconds and UTC time zone                                                                                                                                 |
+| `systemMessage`       | string   | empty for normal chat message or the type of the system message (untranslated)                                                                                         |
+| `messageType`         | string   | Currently known types are `comment`, `comment_deleted`, `system` and `command`                                                                                         |
+| `isReplyable`         | bool     | True if the user can post a reply to this message (only available with `chat-replies` capability)                                                                      |
+| `referenceId`         | string   | A reference string that was given while posting the message to be able to identify a sent message again (only available with `chat-reference-id` capability)           |
+| `message`             | string   | Message string with placeholders (see [Rich Object String](https://github.com/nextcloud/server/issues/1706))                                                           |
+| `messageParameters`   | array    | Message parameters for `message` (see [Rich Object String](https://github.com/nextcloud/server/issues/1706))                                                           |
+| `expirationTimestamp` | int      | Unix time stamp when the message expires and show be removed from the clients UI without further note or warning (only available with `message-expiration` capability) |
+| `parent`              | array    | **Optional:** See `Parent data` below                                                                                                                                  |
+| `reactions`           | int[]    | **Optional:** An array map with relation between reaction emoji and total count of reactions with this emoji                                                           |
+| `reactionsSelf`       | string[] | **Optional:** When the user reacted this is the list of emojis the user reacted with                                                                                   |
+| `markdown`            | bool     | **Optional:** Whether the message should be rendered as markdown or shown as plain text                                                                                |
 
 #### Parent data
 
@@ -93,12 +94,12 @@ Base endpoint is: `/ocs/v2.php/apps/spreed/api/v1`: since Nextcloud 13
 | `limit`              | int  | Number of chat messages to receive into each direction (50 by default, 100 at most) |
 
 * Response:
-	- Status code:
-		+ `200 OK`
-		+ `404 Not Found` When the conversation could not be found for the participant
-		+ `412 Precondition Failed` When the lobby is active and the user is not a moderator
+    - Status code:
+        + `200 OK`
+        + `404 Not Found` When the conversation could not be found for the participant
+        + `412 Precondition Failed` When the lobby is active and the user is not a moderator
 
-	- Header:
+    - Header:
 
 | field                     | type | Description                                                                                                                                                                                                                                        |
 |---------------------------|------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -190,9 +191,10 @@ See [OCP\RichObjectStrings\Definitions](https://github.com/nextcloud/server/blob
 
     - `talkMetaData` array:
 
-| field         | type   | Description                                                                                            |
-|---------------|--------|--------------------------------------------------------------------------------------------------------|
-| `messageType` | string | A message type to show the message in different styles. Currently known: `voice-message` and `comment` |
+| field         | type   | Description                                                                                                           |
+|---------------|--------|-----------------------------------------------------------------------------------------------------------------------|
+| `messageType` | string | A message type to show the message in different styles. Currently known: `voice-message` and `comment`                |
+| `caption`     | string | A caption message that should be shown together with the shared file (only available with `media-caption` capability) |
 
 * Response: [See official OCS Share API docs](https://docs.nextcloud.com/server/latest/developer_manual/client_apis/OCS/ocs-share-api.html?highlight=sharing#create-a-new-share)
 
@@ -299,6 +301,71 @@ See [OCP\RichObjectStrings\Definitions](https://github.com/nextcloud/server/blob
         The parent message is the object of the deleted message with the replaced text "Message deleted by you".
         This message should **NOT** be displayed to the user but instead be used to remove the original message from any cache/storage of the device.
 
+## Set reminder for chat message
+
+* Required capability: `remind-me-later`
+* Method: `POST`
+* Endpoint: `/chat/{token}/{messageId}/reminder`
+* Data:
+
+| field       | type | Description                                                                                                                                         |
+|-------------|------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
+| `timestamp` | int  | Timestamp when the notification should be triggered. Preferable options for 6pm today, 8am tomorrow, Saturday 8am and Monday 8am should be offered. |
+
+* Response:
+    - Status code:
+        + `201 Created`
+        + `401 Unauthorized` when the user is not logged in
+        + `404 Not Found` When the message could not be found in the room
+        + `404 Not Found` When the room could not be found for the participant,
+          or the participant is a guest.
+    - Data:
+        Array with the details of the reminder
+
+| field       | type   | Description                                  |
+|-------------|--------|----------------------------------------------|
+| `userId`    | string | The user id of the user                      |
+| `token`     | string | The token of the conversation of the message |
+| `messageId` | int    | The message id this reminder is for          |
+| `timestamp` | int    | The timestamp when the reminder is triggered |
+
+## Get reminder for chat message
+
+* Required capability: `remind-me-later`
+* Method: `GET`
+* Endpoint: `/chat/{token}/{messageId}/reminder`
+
+* Response:
+    - Status code:
+        + `200 OK`
+        + `401 Unauthorized` when the user is not logged in
+        + `404 Not Found` When the message could not be found in the room
+        + `404 Not Found` When the room could not be found for the participant,
+          or the participant is a guest.
+        + `404 Not Found` When the user has no reminder for this message
+    - Data:
+        Array with the details of the reminder
+
+| field       | type   | Description                                  |
+|-------------|--------|----------------------------------------------|
+| `userId`    | string | The user id of the user                      |
+| `token`     | string | The token of the conversation of the message |
+| `messageId` | int    | The message id this reminder is for          |
+| `timestamp` | int    | The timestamp when the reminder is triggered |
+
+## Delete reminder for chat message
+
+* Required capability: `remind-me-later`
+* Method: `DELETE`
+* Endpoint: `/chat/{token}/{messageId}/reminder`
+
+* Response:
+    - Status code:
+        + `200 OK`
+        + `401 Unauthorized` when the user is not logged in
+        + `404 Not Found` When the message could not be found in the room
+        + `404 Not Found` When the room could not be found for the participant,
+          or the participant is a guest.
 
 ## Mark chat as read
 
@@ -389,7 +456,7 @@ See [OCP\RichObjectStrings\Definitions](https://github.com/nextcloud/server/blob
 * `read_only` - {actor} locked the conversation
 * `listable_none` - {actor} limited the conversation to the current participants
 * `listable_users` - {actor} opened the conversation accessible to registered users
-* `listable_all` - {actor} opened the conversation accessible to registered and guest app users
+* `listable_all` - {actor} opened the conversation accessible to registered users and users created with the Guests app
 * `lobby_timer_reached` - The conversation is now open to everyone
 * `lobby_none` - {actor} opened the conversation to everyone
 * `lobby_non_moderators` - {actor} restricted the conversation to moderators
@@ -432,3 +499,5 @@ See [OCP\RichObjectStrings\Definitions](https://github.com/nextcloud/server/blob
 * `audio_recording_stopped` - {actor} stopped an audio recording
 * `avatar_set` - {actor} set the conversation avatar
 * `avatar_removed` - {actor} removed the conversation avatar
+* `federated_user_added` - {actor} invited {federated_user} / {federated_user} accepted the invitation
+* `federated_user_removed` - {actor} removed {federated_user} / {federated_user} declined the invitation

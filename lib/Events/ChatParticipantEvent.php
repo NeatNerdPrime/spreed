@@ -27,26 +27,20 @@ use OCA\Talk\Participant;
 use OCA\Talk\Room;
 use OCP\Comments\IComment;
 
+/**
+ * @deprecated
+ */
 class ChatParticipantEvent extends ChatEvent {
-	protected Participant $participant;
-	protected bool $silent;
-
 	public function __construct(
 		Room $room,
 		IComment $message,
-		Participant $participant,
+		protected Participant $participant,
 		bool $silent,
 	) {
-		parent::__construct($room, $message);
-		$this->participant = $participant;
-		$this->silent = $silent;
+		parent::__construct($room, $message, false, $silent);
 	}
 
 	public function getParticipant(): Participant {
 		return $this->participant;
-	}
-
-	public function isSilentMessage(): bool {
-		return $this->silent;
 	}
 }

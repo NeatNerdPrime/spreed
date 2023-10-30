@@ -21,6 +21,7 @@
  */
 import Hex from 'crypto-js/enc-hex.js'
 import SHA256 from 'crypto-js/sha256.js'
+import cloneDeep from 'lodash/cloneDeep.js'
 import Vue from 'vue'
 
 import { showError } from '@nextcloud/dialogs'
@@ -28,7 +29,9 @@ import { showError } from '@nextcloud/dialogs'
 import {
 	ATTENDEE,
 	CHAT,
+	CONVERSATION,
 } from '../constants.js'
+import { fetchNoteToSelfConversation } from '../services/conversationsService.js'
 import {
 	deleteMessage,
 	updateLastReadMessage,
@@ -40,6 +43,8 @@ import {
 	addReactionToMessage,
 	removeReactionFromMessage,
 } from '../services/messagesService.js'
+import { useGuestNameStore } from '../stores/guestName.js'
+import { useSharedItemsStore } from '../stores/sharedItems.js'
 import CancelableRequest from '../utils/cancelableRequest.js'
 
 /**
@@ -167,7 +172,7 @@ const getters = {
 		return []
 	},
 	message: (state) => (token, id) => {
-		if (state.messages[token][id]) {
+		if (state.messages[token]?.[id]) {
 			return state.messages[token][id]
 		}
 		return {}
@@ -242,11 +247,6 @@ const getters = {
 	isSendingMessages: (state) => {
 		// the cancel handler only exists when a message is being sent
 		return Object.keys(state.cancelPostNewMessage).length !== 0
-	},
-
-	// Returns true if the message has reactions
-	hasReactions: (state) => (token, messageId) => {
-		return Object.keys(state.messages[token][messageId].reactions).length !== 0
 	},
 }
 
@@ -395,18 +395,44 @@ const mutations = {
 		}
 	},
 
+	/**
+	 * Clears the messages entry from the store for the given conversation token
+	 * starting from defined id.
+	 *
+	 * @param {object} state current store state
+	 * @param {object} payload payload;
+	 * @param {string} payload.token the token of the conversation to be cleared;
+	 * @param {number} payload.id the id of the message to be the first one after clear;
+	 */
+	clearMessagesHistory(state, { token, id }) {
+		Vue.set(state.firstKnown, token, id)
+
+		if (state.visualLastReadMessageId[token] && state.visualLastReadMessageId[token] < id) {
+			Vue.set(state.visualLastReadMessageId, token, id)
+		}
+
+		if (state.messages[token]) {
+			for (const messageId of Object.keys(state.messages[token])) {
+				if (messageId < id) {
+					Vue.delete(state.messages[token], messageId)
+				}
+			}
+		}
+	},
+
 	// Increases reaction count for a particular reaction on a message
 	addReactionToMessage(state, { token, messageId, reaction }) {
-		if (!state.messages[token][messageId].reactions[reaction]) {
-			Vue.set(state.messages[token][messageId].reactions, reaction, 0)
+		const message = state.messages[token][messageId]
+		if (!message.reactions[reaction]) {
+			Vue.set(message.reactions, reaction, 0)
 		}
-		const reactionCount = state.messages[token][messageId].reactions[reaction] + 1
-		Vue.set(state.messages[token][messageId].reactions, reaction, reactionCount)
+		const reactionCount = message.reactions[reaction] + 1
+		Vue.set(message.reactions, reaction, reactionCount)
 
-		if (!state.messages[token][messageId].reactionsSelf) {
-			Vue.set(state.messages[token][messageId], 'reactionsSelf', [reaction])
+		if (!message.reactionsSelf) {
+			Vue.set(message, 'reactionsSelf', [reaction])
 		} else {
-			state.messages[token][messageId].reactionsSelf.push(reaction)
+			Vue.set(message, 'reactionsSelf', message.reactionsSelf.concat(reaction))
 		}
 	},
 
@@ -416,17 +442,16 @@ const mutations = {
 
 	// Decreases reaction count for a particular reaction on a message
 	removeReactionFromMessage(state, { token, messageId, reaction }) {
-		const reactionCount = state.messages[token][messageId].reactions[reaction] - 1
-		Vue.set(state.messages[token][messageId].reactions, reaction, reactionCount)
-		if (state.messages[token][messageId].reactions[reaction] <= 0) {
-			Vue.delete(state.messages[token][messageId].reactions, reaction)
+		const message = state.messages[token][messageId]
+		const reactionCount = message.reactions[reaction] - 1
+		if (reactionCount <= 0) {
+			Vue.delete(message.reactions, reaction)
+		} else {
+			Vue.set(message.reactions, reaction, reactionCount)
 		}
 
-		if (state.messages[token][messageId].reactionsSelf) {
-			const i = state.messages[token][messageId].reactionsSelf.indexOf(reaction)
-			if (i !== -1) {
-				Vue.delete(state.messages[token][messageId], 'reactionsSelf', i)
-			}
+		if (message.reactionsSelf?.includes(reaction)) {
+			Vue.set(message, 'reactionsSelf', message.reactionsSelf.filter(item => item !== reaction))
 		}
 	},
 
@@ -480,9 +505,34 @@ const actions = {
 	 * @param {object} message the message;
 	 */
 	processMessage(context, message) {
-		if (message.parent) {
-			context.commit('addMessage', message.parent)
-			message.parent = message.parent.id
+		const sharedItemsStore = useSharedItemsStore()
+
+		if (message.parent && message.systemMessage
+			&& (message.systemMessage === 'message_deleted'
+				|| message.systemMessage === 'reaction'
+				|| message.systemMessage === 'reaction_deleted'
+				|| message.systemMessage === 'reaction_revoked')) {
+			// If parent message is presented in store already, we update it
+			const parentInStore = context.getters.message(message.token, message.parent.id)
+			if (Object.keys(parentInStore).length !== 0) {
+				context.commit('addMessage', message.parent)
+				context.dispatch('resetReactions', {
+					token: message.token,
+					messageId: message.parent.id,
+				})
+			}
+
+			// Check existing messages for having a deleted message as parent, and update them
+			if (message.systemMessage === 'message_deleted') {
+				context.getters.messagesList(message.token)
+					.filter(storedMessage => storedMessage.parent?.id === message.parent.id)
+					.forEach(storedMessage => {
+						context.commit('addMessage', Object.assign({}, storedMessage, { parent: message.parent }))
+					})
+			}
+
+			// Quit processing
+			return
 		}
 
 		if (message.referenceId) {
@@ -492,20 +542,13 @@ const actions = {
 			})
 		}
 
-		if (message.systemMessage === 'reaction'
-			|| message.systemMessage === 'reaction_deleted'
-			|| message.systemMessage === 'reaction_revoked') {
-			context.commit('resetReactions', {
-				token: message.token,
-				messageId: message.parent,
-			})
-		}
-
 		if (message.systemMessage === 'poll_voted') {
 			context.dispatch('debounceGetPollData', {
 				token: message.token,
 				pollId: message.messageParameters.poll.id,
 			})
+			// Quit processing
+			return
 		}
 
 		if (message.systemMessage === 'poll_closed') {
@@ -515,21 +558,23 @@ const actions = {
 			})
 		}
 
-		// Filter out some system messages
-		if (message.systemMessage !== 'reaction'
-			&& message.systemMessage !== 'reaction_deleted'
-			&& message.systemMessage !== 'reaction_revoked'
-			&& message.systemMessage !== 'poll_voted'
-		) {
-			context.commit('addMessage', message)
+		if (message.systemMessage === 'history_cleared') {
+			context.commit('clearMessagesHistory', {
+				token: message.token,
+				id: message.id,
+			})
 		}
 
-		 if ((message.messageType === 'comment' && message.message === '{file}' && message.messageParameters?.file)
-			|| (message.messageType === 'comment' && message.message === '{object}' && message.messageParameters?.object)) {
-			context.dispatch('addSharedItemMessage', {
-				message,
-			})
-		 }
+		context.commit('addMessage', message)
+
+		if (message.messageParameters && (message.messageType === 'comment' || message.messageType === 'voice-message')) {
+			if (message.messageParameters?.object || message.messageParameters?.file) {
+				// Handle voice messages, shares with single file, polls, deck cards, e.t.c
+				sharedItemsStore.addSharedItemFromMessage(message)
+			} else if (Object.keys(message.messageParameters).some(key => key.startsWith('file'))) {
+				// Handle shares with multiple files
+			}
+		}
 	},
 
 	/**
@@ -547,21 +592,13 @@ const actions = {
 		let response
 		try {
 			response = await deleteMessage(message)
-		} catch (e) {
+			context.dispatch('processMessage', response.data.ocs.data)
+			return response.status
+		} catch (error) {
 			// Restore the previous message state
 			context.commit('addMessage', messageObject)
-			throw e
+			throw error
 		}
-
-		const systemMessage = response.data.ocs.data
-		if (systemMessage.parent) {
-			context.commit('addMessage', systemMessage.parent)
-			systemMessage.parent = systemMessage.parent.id
-		}
-
-		context.commit('addMessage', systemMessage)
-
-		return response.status
 	},
 
 	/**
@@ -580,7 +617,8 @@ const actions = {
 	 * @return {object} temporary message
 	 */
 	createTemporaryMessage(context, { text, token, uploadId, index, file, localUrl, isVoiceMessage }) {
-		const messageToBeReplied = context.getters.getMessageToBeReplied(token)
+		const parentId = context.getters.getMessageToBeReplied(token)
+		const parent = parentId && context.getters.message(token, parentId)
 		const date = new Date()
 		let tempId = 'temp-' + date.getTime()
 		const messageParameters = {}
@@ -599,7 +637,7 @@ const actions = {
 			}
 		}
 
-		const message = Object.assign({}, {
+		return Object.assign({}, {
 			id: tempId,
 			actorId: context.getters.getActorId(),
 			actorType: context.getters.getActorType(),
@@ -610,20 +648,12 @@ const actions = {
 			message: text,
 			messageParameters,
 			token,
+			parent,
 			isReplyable: false,
 			sendingFailure: '',
 			reactions: {},
 			referenceId: Hex.stringify(SHA256(tempId)),
 		})
-
-		/**
-		 * If the current message is a quote-reply message, add the parent key to the
-		 * temporary message object.
-		 */
-		if (messageToBeReplied) {
-			message.parent = messageToBeReplied.id
-		}
-		return message
 	},
 
 	/**
@@ -700,6 +730,18 @@ const actions = {
 	 */
 	deleteMessages(context, token) {
 		context.commit('deleteMessages', token)
+	},
+
+	/**
+	 * Clear all messages before defined id from the store only.
+	 *
+	 * @param {object} context default store context;
+	 * @param {object} payload payload;
+	 * @param {string} payload.token the token of the conversation to be cleared;
+	 * @param {number} payload.id the id of the message to be the first one after clear;
+	 */
+	clearMessagesHistory(context, { token, id }) {
+		context.commit('clearMessagesHistory', { token, id })
 	},
 
 	/**
@@ -796,7 +838,8 @@ const actions = {
 		response.data.ocs.data.forEach(message => {
 			if (message.actorType === ATTENDEE.ACTOR_TYPE.GUESTS) {
 				// update guest display names cache
-				context.dispatch('setGuestNameIfEmpty', message)
+				const guestNameStore = useGuestNameStore()
+				guestNameStore.addGuestName(message, { noUpdate: true })
 			}
 			context.dispatch('processMessage', message)
 			newestKnownMessageId = Math.max(newestKnownMessageId, message.id)
@@ -868,10 +911,11 @@ const actions = {
 		const response = await request({
 			token,
 			messageId,
-			limit: CHAT.FETCH_LIMIT,
+			limit: CHAT.FETCH_LIMIT / 2,
 		}, requestOptions)
 
-		let newestKnownMessageId = 0
+		let oldestKnownMessageId = messageId
+		let newestKnownMessageId = messageId
 
 		if ('x-chat-last-common-read' in response.headers) {
 			const lastCommonReadMessage = parseInt(response.headers['x-chat-last-common-read'], 10)
@@ -885,10 +929,12 @@ const actions = {
 		response.data.ocs.data.forEach(message => {
 			if (message.actorType === ATTENDEE.ACTOR_TYPE.GUESTS) {
 				// update guest display names cache
-				context.dispatch('setGuestNameIfEmpty', message)
+				const guestNameStore = useGuestNameStore()
+				guestNameStore.addGuestName(message, { noUpdate: true })
 			}
 			context.dispatch('processMessage', message)
 			newestKnownMessageId = Math.max(newestKnownMessageId, message.id)
+			oldestKnownMessageId = Math.min(oldestKnownMessageId, message.id)
 
 			if (message.id <= messageId
 				&& message.systemMessage !== 'reaction'
@@ -900,15 +946,14 @@ const actions = {
 			}
 		})
 
-		if ('x-chat-last-given' in response.headers) {
+		if (!context.getters.getFirstKnownMessageId(token) || oldestKnownMessageId < context.getters.getFirstKnownMessageId(token)) {
 			context.dispatch('setFirstKnownMessageId', {
 				token,
-				id: parseInt(response.headers['x-chat-last-given'], 10),
+				id: oldestKnownMessageId,
 			})
 		}
 
-		if (newestKnownMessageId
-			&& !context.getters.getLastKnownMessageId(token)) {
+		if (!context.getters.getLastKnownMessageId(token) || newestKnownMessageId > context.getters.getLastKnownMessageId(token)) {
 			context.dispatch('setLastKnownMessageId', {
 				token,
 				id: newestKnownMessageId,
@@ -983,7 +1028,11 @@ const actions = {
 		// Assign the new cancel function to our data value
 		context.commit('setCancelLookForNewMessages', { cancelFunction: cancel, requestId })
 
-		const response = await request({ token, lastKnownMessageId }, requestOptions)
+		const response = await request({
+			token,
+			lastKnownMessageId,
+			limit: CHAT.FETCH_LIMIT,
+		}, requestOptions)
 		context.commit('setCancelLookForNewMessages', { requestId })
 
 		if ('x-chat-last-common-read' in response.headers) {
@@ -1006,7 +1055,8 @@ const actions = {
 				// update guest display names cache,
 				// force in case the display name has changed since
 				// the last fetch
-				context.dispatch('forceGuestName', message)
+				const guestNameStore = useGuestNameStore()
+				guestNameStore.addGuestName(message, { noUpdate: false })
 			}
 			context.dispatch('processMessage', message)
 			if (!lastMessage || message.id > lastMessage.id) {
@@ -1032,12 +1082,20 @@ const actions = {
 						token,
 						hasCall: true,
 					})
+					context.dispatch('setConversationProperties', {
+						token: message.token,
+						properties: { callStartTime: message.timestamp },
+					})
 				} else if (message.systemMessage === 'call_ended'
 					|| message.systemMessage === 'call_ended_everyone'
 					|| message.systemMessage === 'call_missed') {
 					context.dispatch('overwriteHasCallByChat', {
 						token,
 						hasCall: false,
+					})
+					context.dispatch('setConversationProperties', {
+						token: message.token,
+						properties: { callStartTime: 0 },
 					})
 				}
 			}
@@ -1104,6 +1162,8 @@ const actions = {
 	 * @param {object} data.options post request options.
 	 */
 	async postNewMessage(context, { temporaryMessage, options }) {
+		context.dispatch('addTemporaryMessage', temporaryMessage)
+
 		const { request, cancel } = CancelableRequest(postNewMessage)
 		context.commit('setCancelPostNewMessage', { messageId: temporaryMessage.id, cancelFunction: cancel })
 
@@ -1212,30 +1272,61 @@ const actions = {
 	},
 
 	/**
-	 * Posts a simple text message to a room
+	 * Forwards message to a conversation. By default , the message is forwarded to Note to self.
 	 *
 	 * @param {object} context default store context;
 	 * will be forwarded;
 	 * @param {object} data the wrapping object;
+	 * @param {string} [data.targetToken] the conversation token to where the message will be forwarded;
 	 * @param {object} data.messageToBeForwarded the message object;
 	 */
-	async forwardMessage(context, { messageToBeForwarded }) {
-		const response = await postNewMessage(messageToBeForwarded, { silent: false })
-		return response
-	},
+	async forwardMessage(context, { targetToken, messageToBeForwarded }) {
+		const message = cloneDeep(messageToBeForwarded)
 
-	/**
-	 * Posts a simple text message to a room
-	 *
-	 * @param {object} context default store context;
-	 * will be forwarded;
-	 * @param {object} data the wrapping object;
-	 * @param {string} data.token token of the target conversation
-	 * @param {object} data.richObject the rich object;
-	 */
-	async forwardRichObject(context, { token, richObject }) {
-		const response = await postRichObjectToConversation(token, richObject)
+		// when there is no token provided, the message will be forwarded to the Note to self conversation
+		if (!targetToken) {
+			let noteToSelf = context.getters.conversationsList.find(conversation => conversation.type === CONVERSATION.TYPE.NOTE_TO_SELF)
+			// If Note to self doesn't exist, it will be regenerated
+			if (!noteToSelf) {
+				const response = await fetchNoteToSelfConversation()
+				noteToSelf = response.data.ocs.data
+				context.dispatch('addConversation', noteToSelf)
+			}
+			targetToken = noteToSelf.token
+		}
+		// Overwrite with the target conversation token
+		message.token = targetToken
+		if (message.parent) {
+			delete message.parent
+		}
+
+		if (message.messageParameters?.object) {
+			const richObject = message.messageParameters.object
+			const response = await postRichObjectToConversation(
+				targetToken,
+				{
+					objectId: richObject.id,
+					objectType: richObject.type,
+					metaData: JSON.stringify(richObject),
+					referenceId: '',
+				},
+			)
+			return response
+		}
+
+		// If there are mentions in the message to be forwarded, replace them in the message
+		// text.
+		for (const key in message.messageParameters) {
+			if (key.startsWith('mention')) {
+				const mention = message.messageParameters[key]
+				const mentionString = key.includes('mention-call') ? `**${mention.name}**` : `@"${mention.id}"`
+				message.message = message.message.replace(`{${key}}`, mentionString)
+			}
+		}
+
+		const response = await postNewMessage(message, { silent: false })
 		return response
+
 	},
 
 	/**

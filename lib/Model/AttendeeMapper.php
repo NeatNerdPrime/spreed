@@ -194,7 +194,7 @@ class AttendeeMapper extends QBMapper {
 		$delete->delete($this->getTableName())
 			->where($delete->expr()->in('id', $delete->createNamedParameter($ids, IQueryBuilder::PARAM_INT_ARRAY)));
 
-		return (int) $delete->executeStatement();
+		return $delete->executeStatement();
 	}
 
 	public function modifyPermissions(int $roomId, string $mode, int $newState): void {
@@ -296,6 +296,8 @@ class AttendeeMapper extends QBMapper {
 			'permissions' => (int) $row['permissions'],
 			'access_token' => (string) $row['access_token'],
 			'remote_id' => (string) $row['remote_id'],
+			'phone_number' => $row['phone_number'],
+			'call_id' => $row['call_id'],
 		]);
 	}
 }

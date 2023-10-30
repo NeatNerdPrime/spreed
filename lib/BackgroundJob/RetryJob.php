@@ -30,7 +30,7 @@ declare(strict_types=1);
  */
 namespace OCA\Talk\BackgroundJob;
 
-use OCA\Talk\Federation\Notifications;
+use OCA\Talk\Federation\BackendNotifier;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\IJobList;
 use OCP\BackgroundJob\Job;
@@ -45,18 +45,16 @@ use OCP\ILogger;
  * @package OCA\Talk\BackgroundJob
  */
 class RetryJob extends Job {
-	private Notifications $notifications;
 
 	/** @var int max number of attempts to send the request */
 	private int $maxTry = 20;
 
 
 	public function __construct(
-		Notifications $notifications,
+		private BackendNotifier $backendNotifier,
 		ITimeFactory $timeFactory,
 	) {
 		parent::__construct($timeFactory);
-		$this->notifications = $notifications;
 	}
 
 	/**
@@ -81,7 +79,7 @@ class RetryJob extends Job {
 		$data = json_decode($argument['data'], true);
 		$try = (int)$argument['try'] + 1;
 
-		$this->notifications->sendUpdateDataToRemote($remote, $data, $try);
+		$this->backendNotifier->sendUpdateDataToRemote($remote, $data, $try);
 	}
 
 	/**

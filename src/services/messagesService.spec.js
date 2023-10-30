@@ -1,8 +1,10 @@
+import axios from '@nextcloud/axios'
 import { generateOcsUrl } from '@nextcloud/router'
 
-import mockAxios from '../__mocks__/axios.js'
+import { CHAT } from '../constants.js'
 import {
 	fetchMessages,
+	getMessageContext,
 	lookForNewMessages,
 	postNewMessage,
 	deleteMessage,
@@ -10,10 +12,16 @@ import {
 	updateLastReadMessage,
 } from './messagesService.js'
 
+jest.mock('@nextcloud/axios', () => ({
+	get: jest.fn(),
+	post: jest.fn(),
+	delete: jest.fn(),
+}))
+
 describe('messagesService', () => {
 	afterEach(() => {
 		// cleaning up the mess left behind the previous test
-		mockAxios.reset()
+		jest.clearAllMocks()
 	})
 
 	test('fetchMessages calls the chat API endpoint excluding last known', () => {
@@ -25,7 +33,7 @@ describe('messagesService', () => {
 			dummyOption: true,
 		})
 
-		expect(mockAxios.get).toHaveBeenCalledWith(
+		expect(axios.get).toHaveBeenCalledWith(
 			generateOcsUrl('apps/spreed/api/v1/chat/XXTOKENXX'),
 			{
 				dummyOption: true,
@@ -33,7 +41,7 @@ describe('messagesService', () => {
 					setReadMarker: 0,
 					lookIntoFuture: 0,
 					lastKnownMessageId: 1234,
-					limit: 100,
+					limit: CHAT.FETCH_LIMIT,
 					includeLastKnown: 0,
 				},
 			}
@@ -49,7 +57,7 @@ describe('messagesService', () => {
 			dummyOption: true,
 		})
 
-		expect(mockAxios.get).toHaveBeenCalledWith(
+		expect(axios.get).toHaveBeenCalledWith(
 			generateOcsUrl('apps/spreed/api/v1/chat/XXTOKENXX'),
 			{
 				dummyOption: true,
@@ -57,8 +65,27 @@ describe('messagesService', () => {
 					setReadMarker: 0,
 					lookIntoFuture: 0,
 					lastKnownMessageId: 1234,
-					limit: 100,
+					limit: CHAT.FETCH_LIMIT,
 					includeLastKnown: 1,
+				},
+			}
+		)
+	})
+
+	test('getMessageContext calls the chat API endpoint within specific messageId', () => {
+		getMessageContext({
+			token: 'XXTOKENXX',
+			messageId: 1234,
+		}, {
+			dummyOption: true,
+		})
+
+		expect(axios.get).toHaveBeenCalledWith(
+			generateOcsUrl('apps/spreed/api/v1/chat/XXTOKENXX/1234/context'),
+			{
+				dummyOption: true,
+				params: {
+					limit: CHAT.FETCH_LIMIT / 2,
 				},
 			}
 		)
@@ -72,7 +99,7 @@ describe('messagesService', () => {
 			dummyOption: true,
 		})
 
-		expect(mockAxios.get).toHaveBeenCalledWith(
+		expect(axios.get).toHaveBeenCalledWith(
 			generateOcsUrl('apps/spreed/api/v1/chat/XXTOKENXX'),
 			{
 				dummyOption: true,
@@ -80,7 +107,9 @@ describe('messagesService', () => {
 					setReadMarker: 0,
 					lookIntoFuture: 1,
 					lastKnownMessageId: 1234,
+					limit: CHAT.FETCH_LIMIT,
 					includeLastKnown: 0,
+					markNotificationsAsRead: 0,
 				},
 			}
 		)
@@ -92,12 +121,12 @@ describe('messagesService', () => {
 			message: 'hello world!',
 			actorDisplayName: 'actor-display-name',
 			referenceId: 'reference-id',
-			parent: 111,
+			parent: { id: 111 },
 		}, {
 			dummyOption: true,
 		})
 
-		expect(mockAxios.post).toHaveBeenCalledWith(
+		expect(axios.post).toHaveBeenCalledWith(
 			generateOcsUrl('apps/spreed/api/v1/chat/XXTOKENXX'),
 			{
 				message: 'hello world!',
@@ -117,7 +146,7 @@ describe('messagesService', () => {
 			id: 1234,
 		})
 
-		expect(mockAxios.delete).toHaveBeenCalledWith(
+		expect(axios.delete).toHaveBeenCalledWith(
 			generateOcsUrl('apps/spreed/api/v1/chat/XXTOKENXX/1234'),
 		)
 	})
@@ -130,7 +159,7 @@ describe('messagesService', () => {
 			referenceId: 'reference-id',
 		})
 
-		expect(mockAxios.post).toHaveBeenCalledWith(
+		expect(axios.post).toHaveBeenCalledWith(
 			generateOcsUrl('apps/spreed/api/v1/chat/XXTOKENXX/share'),
 			{
 				objectType: 'deck',
@@ -148,19 +177,21 @@ describe('messagesService', () => {
 			metaData: '{"x":1}',
 		})
 
-		const lastReq = mockAxios.lastReqGet()
-		expect(lastReq.url)
-			.toBe(generateOcsUrl('apps/spreed/api/v1/chat/XXTOKENXX/share'))
-		expect(lastReq.data.objectType).toBe('deck')
-		expect(lastReq.data.objectId).toBe(999)
-		expect(lastReq.data.metaData).toBe('{"x":1}')
-		expect(lastReq.data.referenceId).toEqual(expect.stringMatching(/^[a-z0-9]{64}$/))
+		expect(axios.post).toHaveBeenCalledWith(
+			generateOcsUrl('apps/spreed/api/v1/chat/XXTOKENXX/share'),
+			{
+				objectType: 'deck',
+				objectId: 999,
+				metaData: '{"x":1}',
+				referenceId: expect.stringMatching(/^[a-z0-9]{64}$/),
+			}
+		)
 	})
 
 	test('updateLastReadMessage calls the chat API endpoint', () => {
 		updateLastReadMessage('XXTOKENXX', 1234)
 
-		expect(mockAxios.post).toHaveBeenCalledWith(
+		expect(axios.post).toHaveBeenCalledWith(
 			generateOcsUrl('apps/spreed/api/v1/chat/XXTOKENXX/read'),
 			{
 				lastReadMessage: 1234,

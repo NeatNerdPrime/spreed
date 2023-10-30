@@ -3,7 +3,7 @@
   -
   - @author Marco Ambrosini <marcoambrosini@icloud.com>
   -
-  - @license GNU AGPL version 3 or any later version
+  - @license AGPL-3.0-or-later
   -
   - This program is free software: you can redistribute it and/or modify
   - it under the terms of the GNU Affero General Public License as
@@ -40,17 +40,12 @@
 					class="preview__novideo">
 					<VideoBackground :display-name="displayName"
 						:user="userId" />
-					<NcAvatar v-if="userId"
-						:size="128"
-						:disable-menu="true"
-						:disable-tooltip="true"
-						:show-user-status="false"
-						:user="userId"
-						:display-name="displayName" />
-					<div v-if="!userId"
-						class="avatar avatar-128px guest">
-						{{ firstLetterOfGuestName }}
-					</div>
+					<AvatarWrapper :id="userId"
+						:name="displayName"
+						:source="actorType"
+						:size="AVATAR.SIZE.EXTRA_LARGE"
+						disable-menu
+						disable-tooltip />
 				</div>
 			</div>
 
@@ -122,18 +117,41 @@
 			<!-- Background selection -->
 			<VideoBackgroundEditor v-if="showBackgroundEditor"
 				:token="token"
-				@update-background="handleUpdateBackground" />
+				@update-background="handleUpdateVirtualBackground" />
 
 			<!-- "Always show" setting -->
-			<NcCheckboxRadioSwitch :checked.sync="showMediaSettings"
-				class="checkbox">
+			<NcCheckboxRadioSwitch class="checkbox"
+				:checked="showMediaSettings || showRecordingWarning"
+				:disabled="showRecordingWarning"
+				@update:checked="setShowMediaSettings">
 				{{ t('spreed', 'Always show preview for this conversation') }}
 			</NcCheckboxRadioSwitch>
 
+			<!-- Moderator options before starting a call-->
+			<NcCheckboxRadioSwitch v-if="!hasCall && canModerateRecording"
+				class="checkbox"
+				:checked.sync="isRecordingFromStart">
+				{{ t('spreed', 'Start recording immediately with the call') }}
+			</NcCheckboxRadioSwitch>
+
 			<!-- Recording warning -->
-			<NcNoteCard v-if="isStartingRecording || isRecording"
-				type="warning">
-				<p>{{ t('spreed', 'The call is being recorded.') }}</p>
+			<NcNoteCard v-if="showRecordingWarning" type="warning">
+				<p v-if="isCurrentlyRecording">
+					<strong>{{ t('spreed', 'The call is being recorded.') }}</strong>
+				</p>
+				<p v-else>
+					<strong>{{ t('spreed', 'The call might be recorded.') }}</strong>
+				</p>
+				<template v-if="isRecordingConsentRequired">
+					<p>
+						{{ t('spreed', 'The recording might include your voice, video from camera, and screen share. Your consent is required before joining the call.') }}
+					</p>
+					<NcCheckboxRadioSwitch class="checkbox--warning"
+						:checked="recordingConsentGiven"
+						@update:checked="setRecordingConsentGiven">
+						{{ t('spreed', 'Give consent to the recording of this call') }}
+					</NcCheckboxRadioSwitch>
+				</template>
 			</NcNoteCard>
 
 			<!-- buttons bar at the bottom -->
@@ -168,10 +186,13 @@
 				<!-- Join call -->
 				<CallButton v-if="!isInCall"
 					class="call-button"
-					:force-join-call="true"
+					is-media-settings
+					:is-recording-from-start="isRecordingFromStart"
+					:disabled="isRecordingConsentRequired && !recordingConsentGiven"
+					:recording-consent-given="recordingConsentGiven"
 					:silent-call="silentCall" />
-				<NcButton v-else @click="closeModal">
-					{{ t('spreed', 'Done') }}
+				<NcButton v-else-if="showUpdateChangesButton" @click="closeModalAndApplySettings">
+					{{ t('spreed', 'Apply settings') }}
 				</NcButton>
 			</div>
 		</div>
@@ -186,17 +207,18 @@ import Creation from 'vue-material-design-icons/Creation.vue'
 import VideoIcon from 'vue-material-design-icons/Video.vue'
 import VideoOff from 'vue-material-design-icons/VideoOff.vue'
 
-import { subscribe, unsubscribe } from '@nextcloud/event-bus'
+import { getCapabilities } from '@nextcloud/capabilities'
+import { emit, subscribe, unsubscribe } from '@nextcloud/event-bus'
 
 import NcActionButton from '@nextcloud/vue/dist/Components/NcActionButton.js'
 import NcActions from '@nextcloud/vue/dist/Components/NcActions.js'
-import NcAvatar from '@nextcloud/vue/dist/Components/NcAvatar.js'
 import NcButton from '@nextcloud/vue/dist/Components/NcButton.js'
 import NcCheckboxRadioSwitch from '@nextcloud/vue/dist/Components/NcCheckboxRadioSwitch.js'
 import NcModal from '@nextcloud/vue/dist/Components/NcModal.js'
 import NcNoteCard from '@nextcloud/vue/dist/Components/NcNoteCard.js'
 import Tooltip from '@nextcloud/vue/dist/Directives/Tooltip.js'
 
+import AvatarWrapper from '../AvatarWrapper/AvatarWrapper.vue'
 import VideoBackground from '../CallView/shared/VideoBackground.vue'
 import MediaDevicesSelector from '../MediaDevicesSelector.vue'
 import CallButton from '../TopBar/CallButton.vue'
@@ -204,11 +226,16 @@ import VolumeIndicator from '../VolumeIndicator/VolumeIndicator.vue'
 import VideoBackgroundEditor from './VideoBackgroundEditor.vue'
 
 import { useIsInCall } from '../../composables/useIsInCall.js'
-import { CALL, VIRTUAL_BACKGROUND } from '../../constants.js'
+import { AVATAR, CALL, PARTICIPANT, VIRTUAL_BACKGROUND } from '../../constants.js'
 import { devices } from '../../mixins/devices.js'
 import isInLobby from '../../mixins/isInLobby.js'
 import BrowserStorage from '../../services/BrowserStorage.js'
+import { useGuestNameStore } from '../../stores/guestName.js'
+import { useSettingsStore } from '../../stores/settings.js'
 import { localMediaModel } from '../../utils/webrtc/index.js'
+
+const recordingEnabled = getCapabilities()?.spreed?.config?.call?.recording || false
+const recordingConsent = getCapabilities()?.spreed?.config?.call?.['recording-consent']
 
 export default {
 	name: 'MediaSettings',
@@ -218,6 +245,7 @@ export default {
 	},
 
 	components: {
+		AvatarWrapper,
 		Bell,
 		BellOff,
 		CallButton,
@@ -225,7 +253,6 @@ export default {
 		Creation,
 		NcActionButton,
 		NcActions,
-		NcAvatar,
 		NcButton,
 		NcCheckboxRadioSwitch,
 		NcModal,
@@ -240,9 +267,20 @@ export default {
 
 	mixins: [devices, isInLobby],
 
+	props: {
+		recordingConsentGiven: {
+			type: Boolean,
+			default: false
+		}
+	},
+
+	emits: ['update:recording-consent-given'],
+
 	setup() {
 		const isInCall = useIsInCall()
-		return { isInCall }
+		const guestNameStore = useGuestNameStore()
+		const settingsStore = useSettingsStore()
+		return { AVATAR, isInCall, guestNameStore, settingsStore }
 	},
 
 	data() {
@@ -252,8 +290,12 @@ export default {
 			tabContent: 'none',
 			audioOn: undefined,
 			videoOn: undefined,
-			showMediaSettings: true,
 			silentCall: false,
+			updatedBackground: undefined,
+			deviceIdChanged: false,
+			audioDeviceStateChanged: false,
+			videoDeviceStateChanged: false,
+			isRecordingFromStart: false,
 		}
 	},
 
@@ -267,23 +309,26 @@ export default {
 		},
 
 		guestName() {
-			return this.$store.getters.getGuestName(
+			return this.guestNameStore.getGuestName(
 				this.$store.getters.getToken(),
 				this.$store.getters.getActorId(),
 			)
-		},
-
-		firstLetterOfGuestName() {
-			const customName = this.guestName !== t('spreed', 'Guest') ? this.guestName : '?'
-			return customName.charAt(0)
 		},
 
 		userId() {
 			return this.$store.getters.getUserId()
 		},
 
+		actorType() {
+			return this.$store.getters.getActorType()
+		},
+
 		token() {
 			return this.$store.getters.getToken()
+		},
+
+		showMediaSettings() {
+			return this.settingsStore.getShowMediaSettings(this.token)
 		},
 
 		showVideo() {
@@ -312,14 +357,27 @@ export default {
 			return this.conversation.hasCall || this.conversation.hasCallOverwrittenByChat
 		},
 
-		isStartingRecording() {
-			return this.conversation.callRecording === CALL.RECORDING.VIDEO_STARTING
-				|| this.conversation.callRecording === CALL.RECORDING.AUDIO_STARTING
+		isCurrentlyRecording() {
+			return [CALL.RECORDING.VIDEO_STARTING, CALL.RECORDING.AUDIO_STARTING,
+				CALL.RECORDING.VIDEO, CALL.RECORDING.AUDIO].includes(this.conversation.callRecording)
 		},
 
-		isRecording() {
-			return this.conversation.callRecording === CALL.RECORDING.VIDEO
-				|| this.conversation.callRecording === CALL.RECORDING.AUDIO
+		canFullModerate() {
+			return this.conversation.participantType === PARTICIPANT.TYPE.OWNER
+				|| this.conversation.participantType === PARTICIPANT.TYPE.MODERATOR
+		},
+
+		canModerateRecording() {
+			return this.canFullModerate && recordingEnabled
+		},
+
+		isRecordingConsentRequired() {
+			return recordingConsent === CALL.RECORDING_CONSENT.REQUIRED
+				|| (recordingConsent === CALL.RECORDING_CONSENT.OPTIONAL && this.conversation.recordingConsent === CALL.RECORDING_CONSENT.REQUIRED)
+		},
+
+		showRecordingWarning() {
+			return !this.isInCall && (this.isCurrentlyRecording || this.isRecordingConsentRequired)
 		},
 
 		showSilentCallOption() {
@@ -338,6 +396,10 @@ export default {
 			return this.virtualBackground.isAvailable()
 		},
 
+		showUpdateChangesButton() {
+			return this.updatedBackground || this.deviceIdChanged || this.audioDeviceStateChanged
+				|| this.videoDeviceStateChanged
+		},
 	},
 
 	watch: {
@@ -361,35 +423,33 @@ export default {
 			}
 		},
 
-		showMediaSettings(newValue) {
-			if (newValue) {
-				BrowserStorage.setItem('showMediaSettings' + this.token, 'true')
-			} else {
-				BrowserStorage.setItem('showMediaSettings' + this.token, 'false')
-			}
-		},
-
 		audioInputId(audioInputId) {
+			this.deviceIdChanged = true
 			if (this.showDeviceSelection && audioInputId && !this.audioOn) {
 				this.toggleAudio()
 			}
 		},
 
 		videoInputId(videoInputId) {
+			this.deviceIdChanged = true
 			if (this.showDeviceSelection && videoInputId && !this.videoOn) {
 				this.toggleVideo()
 			}
+		},
+
+		isRecordingFromStart(value) {
+			this.setRecordingConsentGiven(value)
 		},
 	},
 
 	mounted() {
 		subscribe('talk:media-settings:show', this.showModal)
-		subscribe('talk:media-settings:hide', this.closeModal)
+		subscribe('talk:media-settings:hide', this.closeModalAndApplySettings)
 	},
 
 	beforeDestroy() {
 		unsubscribe('talk:media-settings:show', this.showModal)
-		unsubscribe('talk:media-settings:hide', this.closeModal)
+		unsubscribe('talk:media-settings:hide', this.closeModalAndApplySettings)
 	},
 
 	methods: {
@@ -399,6 +459,10 @@ export default {
 
 		closeModal() {
 			this.modal = false
+			this.updatedBackground = undefined
+			this.deviceIdChanged = false
+			this.audioDeviceStateChanged = false
+			this.videoDeviceStateChanged = false
 		},
 
 		toggleAudio() {
@@ -409,6 +473,7 @@ export default {
 				BrowserStorage.setItem('audioDisabled_' + this.token, 'true')
 				this.audioOn = false
 			}
+			this.audioDeviceStateChanged = !this.audioDeviceStateChanged
 		},
 
 		toggleVideo() {
@@ -419,18 +484,41 @@ export default {
 				BrowserStorage.setItem('videoDisabled_' + this.token, 'true')
 				this.videoOn = false
 			}
+			this.videoDeviceStateChanged = !this.videoDeviceStateChanged
+		},
+
+		closeModalAndApplySettings() {
+			if (this.updatedBackground) {
+				this.handleUpdateBackground(this.updatedBackground)
+			}
+			if (this.audioDeviceStateChanged) {
+				emit('local-audio-control-button:toggle-audio')
+			}
+			if (this.videoDeviceStateChanged) {
+				emit('local-video-control-button:toggle-video')
+			}
+
+			this.closeModal()
 		},
 
 		handleUpdateBackground(background) {
 			if (background === 'none') {
-				this.clearVirtualBackground()
 				this.clearBackground()
 			} else if (background === 'blur') {
-				this.blurVirtualBackground()
 				this.blurBackground()
 			} else {
-				this.setVirtualBackgroundImage(background)
 				this.setBackgroundImage(background)
+			}
+		},
+
+		handleUpdateVirtualBackground(background) {
+			this.updatedBackground = background
+			if (background === 'none') {
+				this.clearVirtualBackground()
+			} else if (background === 'blur') {
+				this.blurVirtualBackground()
+			} else {
+				this.setVirtualBackgroundImage(background)
 			}
 		},
 
@@ -448,7 +536,7 @@ export default {
 			if (this.isInCall) {
 				localMediaModel.disableVirtualBackground()
 			} else {
-				BrowserStorage.setItem('virtualBackgroundEnabled_' + this.token, 'false')
+				BrowserStorage.removeItem('virtualBackgroundEnabled_' + this.token)
 			}
 		},
 
@@ -513,38 +601,37 @@ export default {
 				this.tabContent = 'none'
 			}
 		},
+
+		setShowMediaSettings(newValue) {
+			this.settingsStore.setShowMediaSettings(this.token, newValue)
+		},
+
+		setRecordingConsentGiven(value) {
+			this.$emit('update:recording-consent-given', value)
+		}
 	},
 }
 </script>
 
 <style lang="scss" scoped>
-@import '../../assets/variables';
-@import '../../assets/avatar';
-@include avatar-mixin(64px);
-@include avatar-mixin(128px);
-
 .media-settings {
-	padding: calc(var(--default-grid-baseline)*4);
-	background-color: var(--color-main-background);
-	overflow-y: auto;
-	overflow-x: hidden;
-	margin: auto;
-	width: 100%;
+	padding: calc(var(--default-grid-baseline) * 5);
 
 	&__title {
 		text-align: center;
 	}
+
 	&__preview {
 		position: relative;
-		margin: 0 auto calc(var(--default-grid-baseline)*3) auto;
+		margin: 0 auto calc(var(--default-grid-baseline) * 3);
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		overflow: hidden;
-		border-radius: calc(var(--default-grid-baseline)*3);
+		border-radius: calc(var(--default-grid-baseline) * 3);
 		background-color: var(--color-loading-dark);
-		height: 300px;
-		width: 400px;
+		width: 100%;
+		aspect-ratio: 4/3;
 	}
 
 	&__toggles-wrapper {
@@ -569,11 +656,11 @@ export default {
 	}
 
 	&__call-preferences {
-		height: $clickable-area;
+		height: var(--default-clickable-area);
 		display: flex;
 		justify-content: center;
 		align-items: center;
-		gap: calc(var(--default-grid-baseline)*2);
+		gap: calc(var(--default-grid-baseline) * 2);
 	}
 
 	&__call-buttons {
@@ -609,7 +696,14 @@ export default {
 .checkbox {
 	display: flex;
 	justify-content: center;
-	margin: calc(var(--default-grid-baseline)*2);
+	margin: calc(var(--default-grid-baseline) * 2);
+
+	&--warning {
+		&:focus-within :deep(.checkbox-radio-switch__label),
+		& :deep(.checkbox-radio-switch__label:hover) {
+			background-color: var(--note-background) !important;
+		}
+	}
 }
 
 :deep(.modal-container) {

@@ -26,19 +26,17 @@ namespace OCA\Talk\Events;
 use OCA\Talk\Room;
 use OCP\Comments\IComment;
 
+/**
+ * @deprecated
+ */
 class ChatEvent extends RoomEvent {
-	protected IComment $comment;
-
-	protected bool $skipLastActivityUpdate;
-
 	public function __construct(
 		Room $room,
-		IComment $comment,
-		bool $skipLastActivityUpdate = false,
+		protected IComment $comment,
+		protected bool $skipLastActivityUpdate = false,
+		protected bool $silent = false,
 	) {
 		parent::__construct($room);
-		$this->comment = $comment;
-		$this->skipLastActivityUpdate = $skipLastActivityUpdate;
 	}
 
 	public function getComment(): IComment {
@@ -58,5 +56,9 @@ class ChatEvent extends RoomEvent {
 	 */
 	public function shouldSkipLastActivityUpdate(): bool {
 		return $this->skipLastActivityUpdate;
+	}
+
+	public function isSilentMessage(): bool {
+		return $this->silent;
 	}
 }

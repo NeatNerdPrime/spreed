@@ -32,56 +32,76 @@ the main body of the message as well as a quote.
 		:data-next-message-id="nextMessageId"
 		:data-previous-message-id="previousMessageId"
 		class="message"
-		:class="{'message__last': isLastMessage}"
+		:class="{'message--highlighted': isHighlighted}"
 		tabindex="0"
+		@animationend="isHighlighted = false"
 		@mouseover="handleMouseover"
 		@mouseleave="handleMouseleave">
-		<div :class="{'normal-message-body': !isSystemMessage && !isDeletedMessage, 'system' : isSystemMessage}"
+		<div :class="{'normal-message-body': !isSystemMessage && !isDeletedMessage,
+			'system' : isSystemMessage,
+			'combined-system': isCombinedSystemMessage}"
 			class="message-body">
-			<div v-if="isFirstMessage && showAuthor"
-				class="message-body__author"
-				aria-level="4">
-				{{ actorDisplayName }}
-			</div>
 			<div ref="messageMain"
 				class="message-body__main">
 				<div v-if="isSingleEmoji"
 					class="message-body__main__text">
-					<Quote v-if="parent" :parent-id="parent" v-bind="quote" />
+					<Quote v-if="parent" v-bind="parent" />
 					<div class="single-emoji">
-						{{ message }}
+						{{ renderedMessage }}
 					</div>
 				</div>
 				<div v-else-if="showJoinCallButton" class="message-body__main__text call-started">
-					<NcRichText :text="message"
+					<NcRichText :text="renderedMessage"
 						:arguments="richParameters"
-						:autolink="true"
+						autolink
+						dir="auto"
 						:reference-limit="0" />
 					<CallButton />
 				</div>
-				<div v-else-if="showResultsButton" class="message-body__main__text system-message">
-					<NcRichText :text="message"
+				<div v-else-if="showResultsButton || isSystemMessage" class="message-body__main__text system-message">
+					<NcRichText :text="renderedMessage"
 						:arguments="richParameters"
-						:autolink="true"
+						autolink
+						dir="auto"
 						:reference-limit="0" />
 					<!-- Displays only the "see results" button with the results modal -->
-					<Poll :id="messageParameters.poll.id"
+					<Poll v-if="showResultsButton"
+						:id="messageParameters.poll.id"
 						:poll-name="messageParameters.poll.name"
 						:token="token"
-						:show-as-button="true" />
+						show-as-button />
 				</div>
 				<div v-else-if="isDeletedMessage" class="message-body__main__text deleted-message">
-					<NcRichText :text="message"
+					<NcRichText :text="renderedMessage"
 						:arguments="richParameters"
-						:autolink="true"
+						autolink
+						dir="auto"
 						:reference-limit="0" />
 				</div>
-				<div v-else class="message-body__main__text" :class="{'system-message': isSystemMessage}">
-					<Quote v-if="parent" :parent-id="parent" v-bind="quote" />
-					<NcRichText :text="message"
+				<div v-else
+					class="message-body__main__text message-body__main__text--markdown"
+					@mouseover="handleMarkdownMouseOver"
+					@mouseleave="handleMarkdownMouseLeave">
+					<Quote v-if="parent" v-bind="parent" />
+					<NcRichText :text="renderedMessage"
 						:arguments="richParameters"
-						:autolink="true"
+						autolink
+						dir="auto"
+						:use-markdown="markdown"
 						:reference-limit="1" />
+
+					<NcButton v-if="containsCodeBlocks"
+						v-show="currentCodeBlock !== null"
+						class="message-copy-code"
+						type="tertiary"
+						:aria-label="t('spreed', 'Copy code block')"
+						:title="t('spreed', 'Copy code block')"
+						:style="{top: copyButtonOffset}"
+						@click="copyCodeBlock">
+						<template #icon>
+							<ContentCopy :size="16" />
+						</template>
+					</NcButton>
 				</div>
 				<div v-if="!isDeletedMessage" class="message-body__main__right">
 					<span :title="messageDate"
@@ -133,16 +153,17 @@ the main body of the message as well as a quote.
 			<div v-if="hasReactions"
 				class="message-body__reactions"
 				@mouseover="handleReactionsMouseOver">
-				<NcPopover v-for="reaction in Object.keys(simpleReactions)"
+				<NcPopover v-for="reaction in Object.keys(reactions)"
 					:key="reaction"
 					:delay="200"
+					:focus-trap="false"
 					:triggers="['hover']">
 					<template #trigger>
-						<NcButton v-if="simpleReactions[reaction] !== 0"
+						<NcButton v-if="reactions[reaction] !== 0"
 							:type="userHasReacted(reaction) ? 'primary' : 'secondary'"
 							class="reaction-button"
 							@click="handleReactionClick(reaction)">
-							{{ reaction }} {{ simpleReactions[reaction] }}
+							{{ reaction }} {{ reactions[reaction] }}
 						</NcButton>
 					</template>
 
@@ -179,6 +200,7 @@ the main body of the message as well as a quote.
 		<div class="message-body__scroll">
 			<MessageButtonsBar v-if="showMessageButtonsBar"
 				ref="messageButtonsBar"
+				class="message-buttons-bar"
 				:is-translation-available="isTranslationAvailable"
 				:is-action-menu-open.sync="isActionMenuOpen"
 				:is-emoji-picker-open.sync="isEmojiPickerOpen"
@@ -195,10 +217,23 @@ the main body of the message as well as a quote.
 				:show-sent-icon="showSentIcon"
 				:sent-icon-tooltip="sentIconTooltip"
 				@show-translate-dialog="isTranslateDialogOpen = true"
+				@reply="handleReply"
 				@delete="handleDelete" />
+			<div v-else-if="showCombinedSystemMessageToggle"
+				class="message-buttons-bar">
+				<NcButton type="tertiary"
+					:aria-label="t('spreed', 'Show or collapse system messages')"
+					:title="t('spreed', 'Show or collapse system messages')"
+					@click="toggleCombinedSystemMessage">
+					<template #icon>
+						<UnfoldMore v-if="isCombinedSystemMessageCollapsed" />
+						<UnfoldLess v-else />
+					</template>
+				</NcButton>
+			</div>
 		</div>
 
-		<MessageTranslateDialog v-if="isTranslateDialogOpen"
+		<MessageTranslateDialog v-if="isTranslationAvailable && isTranslateDialogOpen"
 			:message="message"
 			:rich-parameters="richParameters"
 			@close="isTranslateDialogOpen = false" />
@@ -218,8 +253,11 @@ import emojiRegex from 'emoji-regex/index.js'
 import AlertCircle from 'vue-material-design-icons/AlertCircle.vue'
 import Check from 'vue-material-design-icons/Check.vue'
 import CheckAll from 'vue-material-design-icons/CheckAll.vue'
+import ContentCopy from 'vue-material-design-icons/ContentCopy.vue'
 import EmoticonOutline from 'vue-material-design-icons/EmoticonOutline.vue'
 import Reload from 'vue-material-design-icons/Reload.vue'
+import UnfoldLess from 'vue-material-design-icons/UnfoldLessHorizontal.vue'
+import UnfoldMore from 'vue-material-design-icons/UnfoldMoreHorizontal.vue'
 
 import { getCapabilities } from '@nextcloud/capabilities'
 import { showError, showSuccess, showWarning, TOAST_DEFAULT_TIMEOUT } from '@nextcloud/dialogs'
@@ -246,8 +284,12 @@ import { useIsInCall } from '../../../../composables/useIsInCall.js'
 import { ATTENDEE, CONVERSATION, PARTICIPANT } from '../../../../constants.js'
 import participant from '../../../../mixins/participant.js'
 import { EventBus } from '../../../../services/EventBus.js'
+import { useGuestNameStore } from '../../../../stores/guestName.js'
+import { getItemTypeFromMessage } from '../../../../utils/getItemTypeFromMessage.js'
 
-const isTranslationAvailable = getCapabilities()?.spreed?.config?.chat?.translations?.length > 0
+const isTranslationAvailable = getCapabilities()?.spreed?.config?.chat?.['has-translation-providers']
+	// Fallback for the desktop client when connecting to Talk 17
+	?? getCapabilities()?.spreed?.config?.chat?.translations?.length > 0
 
 /**
  * @property {object} scrollerBoundingClientRect provided by MessageList.vue
@@ -269,8 +311,11 @@ export default {
 		AlertCircle,
 		Check,
 		CheckAll,
+		ContentCopy,
 		EmoticonOutline,
 		Reload,
+		UnfoldLess,
+		UnfoldMore,
 	},
 
 	mixins: [
@@ -293,13 +338,6 @@ export default {
 		 * The actor id of the sender of the message.
 		 */
 		actorId: {
-			type: String,
-			required: true,
-		},
-		/**
-		 * The display name of the sender of the message.
-		 */
-		actorDisplayName: {
 			type: String,
 			required: true,
 		},
@@ -332,26 +370,12 @@ export default {
 			required: true,
 		},
 		/**
-		 * If true, it displays the message author on top of the message.
-		 */
-		showAuthor: {
-			type: Boolean,
-			default: true,
-		},
-		/**
 		 * Specifies if the message is temporary in order to display the spinner instead
 		 * of the message time.
 		 */
 		isTemporary: {
 			type: Boolean,
-			required: true,
-		},
-		/**
-		 * Specifies if the message is the first of a group of same-author messages.
-		 */
-		isFirstMessage: {
-			type: Boolean,
-			required: true,
+			default: false,
 		},
 		/**
 		 * Specifies if the message can be replied to.
@@ -375,6 +399,20 @@ export default {
 			required: true,
 		},
 		/**
+		 * Specifies if the message is a combined system message.
+		 */
+		isCombinedSystemMessage: {
+			type: Boolean,
+			default: false,
+		},
+		/**
+		 * Specifies whether the combined system message is collapsed.
+		 */
+		isCombinedSystemMessageCollapsed: {
+			type: Boolean,
+			default: undefined,
+		},
+		/**
 		 * The type of the message.
 		 */
 		messageType: {
@@ -382,11 +420,18 @@ export default {
 			required: true,
 		},
 		/**
-		 * The parent message's id.
+		 * The parent message.
 		 */
 		parent: {
-			type: Number,
-			default: 0,
+			type: Object,
+			default: undefined,
+		},
+		/**
+		 * Is message allowed to render in markdown
+		 */
+		markdown: {
+			type: Boolean,
+			default: true,
 		},
 		sendingFailure: {
 			type: String,
@@ -412,18 +457,29 @@ export default {
 			type: Array,
 			default: () => { return [] },
 		},
+
+		referenceId: {
+			type: String,
+			default: '',
+		},
 	},
+
+	emits: ['toggle-combined-system-message'],
 
 	setup() {
 		const isInCall = useIsInCall()
-		return { isInCall, isTranslationAvailable }
+		const guestNameStore = useGuestNameStore()
+		return { isInCall, isTranslationAvailable, guestNameStore }
 	},
+
+	expose: ['highlightMessage'],
 
 	data() {
 		return {
 			isHovered: false,
 			showReloadButton: false,
 			isDeleting: false,
+			isHighlighted: false,
 			// whether the message was seen, only used if this was marked as last read message
 			seen: false,
 			isActionMenuOpen: false,
@@ -435,6 +491,9 @@ export default {
 			isForwarderOpen: false,
 			detailedReactionsLoading: false,
 			isTranslateDialogOpen: false,
+			codeBlocks: null,
+			currentCodeBlock: null,
+			copyButtonOffset: 0,
 		}
 	},
 
@@ -446,6 +505,15 @@ export default {
 
 		isLastReadMessage() {
 			return !this.isLastMessage && this.id === this.$store.getters.getVisualLastReadMessageId(this.token)
+		},
+
+		renderedMessage() {
+			if (this.messageParameters?.file && this.message !== '{file}') {
+				// Add a new line after file to split content into different paragraphs
+				return '{file}' + '\n\n' + this.message
+			} else {
+				return this.message
+			}
 		},
 
 		messageObject() {
@@ -466,10 +534,6 @@ export default {
 
 		messageDate() {
 			return moment(this.timestamp * 1000).format('LL')
-		},
-
-		quote() {
-			return this.parent && this.$store.getters.message(this.token, this.parent)
 		},
 
 		conversation() {
@@ -518,7 +582,7 @@ export default {
 			let match
 			let emojiStrings = ''
 			let emojiCount = 0
-			const trimmedMessage = this.message.trim()
+			const trimmedMessage = this.renderedMessage.trim()
 
 			// eslint-disable-next-line no-cond-assign
 			while (match = regex.exec(trimmedMessage)) {
@@ -538,17 +602,20 @@ export default {
 			Object.keys(this.messageParameters).forEach(function(p) {
 				const type = this.messageParameters[p].type
 				const mimetype = this.messageParameters[p].mimetype
+				const itemType = getItemTypeFromMessage(this.messageObject)
 				if (type === 'user' || type === 'call' || type === 'guest' || type === 'user-group' || type === 'group') {
 					richParameters[p] = {
 						component: Mention,
 						props: this.messageParameters[p],
 					}
 				} else if (type === 'file' && mimetype !== 'text/vcard') {
-					const parameters = this.messageParameters[p]
-					parameters['is-voice-message'] = this.messageType === 'voice-message'
 					richParameters[p] = {
 						component: FilePreview,
-						props: parameters,
+						props: Object.assign({
+							token: this.token,
+							itemType,
+							referenceId: this.referenceId,
+						}, this.messageParameters[p]),
 					}
 				} else if (type === 'deck-card') {
 					richParameters[p] = {
@@ -598,6 +665,11 @@ export default {
 					|| this.isReactionsMenuOpen || this.isForwarderOpen || this.isTranslateDialogOpen)
 		},
 
+		showCombinedSystemMessageToggle() {
+			return this.isSystemMessage && !this.isDeletedMessage && !this.isTemporary
+				&& this.isCombinedSystemMessage && (this.isHovered || !this.isCombinedSystemMessageCollapsed)
+		},
+
 		isTemporaryUpload() {
 			return this.isTemporary && this.messageParameters.file
 		},
@@ -644,7 +716,7 @@ export default {
 		},
 
 		hasReactions() {
-			return this.$store.getters.hasReactions(this.token, this.id)
+			return Object.keys(this.reactions).length !== 0
 		},
 
 		canReact() {
@@ -654,10 +726,6 @@ export default {
 				&& this.messageObject.messageType !== 'comment_deleted'
 		},
 
-		simpleReactions() {
-			return this.messageObject.reactions
-		},
-
 		detailedReactions() {
 			return this.$store.getters.reactions(this.token, this.id)
 		},
@@ -665,31 +733,62 @@ export default {
 		detailedReactionsLoaded() {
 			return this.$store.getters.reactionsLoaded(this.token, this.id)
 		},
+
+		containsCodeBlocks() {
+			return this.message.includes('```')
+		},
 	},
 
 	watch: {
 		showJoinCallButton() {
 			EventBus.$emit('scroll-chat-to-bottom')
 		},
+
+		// Scroll list to the bottom if reaction to the message was added, as it expands the list
+		reactions() {
+			EventBus.$emit('scroll-chat-to-bottom-if-sticky')
+		},
 	},
 
 	mounted() {
-		// define a function, so it can be triggered directly on the DOM element
-		// which can be found with document.getElementById()
-		this.$refs.message.highlightAnimation = () => {
-			this.highlightAnimation()
+		if (!this.containsCodeBlocks) {
+			return
 		}
 
-		this.$refs.message.addEventListener('animationend', this.highlightAnimationStop)
-	},
-
-	beforeDestroy() {
-		this.$refs.message.removeEventListener('animationend', this.highlightAnimationStop)
+		this.codeBlocks = Array.from(this.$refs.message?.querySelectorAll('pre'))
 	},
 
 	methods: {
+		handleMarkdownMouseOver(event) {
+			if (!this.containsCodeBlocks) {
+				return
+			}
+
+			const index = this.codeBlocks.findIndex(item => item.contains(event.target))
+			if (index !== -1) {
+				this.currentCodeBlock = index
+				const el = this.codeBlocks[index]
+				this.copyButtonOffset = `${el.offsetTop}px`
+			}
+		},
+
+		handleMarkdownMouseLeave() {
+			this.currentCodeBlock = null
+			this.copyButtonOffset = 0
+		},
+
+		async copyCodeBlock() {
+			const code = this.codeBlocks[this.currentCodeBlock].textContent
+			try {
+				await navigator.clipboard.writeText(code)
+				showSuccess(t('spreed', 'Code block copied to clipboard'))
+			} catch (error) {
+				showError(t('spreed', 'Code block could not be copied'))
+			}
+		},
+
 		userHasReacted(reaction) {
-			return this.reactionsSelf && this.reactionsSelf.includes(reaction)
+			return this.reactionsSelf?.includes(reaction)
 		},
 
 		lastReadMessageVisibilityChanged(isVisible) {
@@ -698,13 +797,8 @@ export default {
 			}
 		},
 
-		highlightAnimation() {
-			// trigger CSS highlight animation by setting a class
-			this.$refs.message.classList.add('highlight-animation')
-		},
-		highlightAnimationStop() {
-			// when the animation ended, remove the class, so we can trigger it again another time
-			this.$refs.message.classList.remove('highlight-animation')
+		highlightMessage() {
+			this.isHighlighted = true
 		},
 
 		handleRetry() {
@@ -787,6 +881,14 @@ export default {
 			}
 		},
 
+		handleReply() {
+			this.$store.dispatch('addMessageToBeReplied', {
+				token: this.token,
+				id: this.id,
+			})
+			EventBus.$emit('focus-chat-input')
+		},
+
 		async handleDelete() {
 			this.isDeleting = true
 			try {
@@ -841,7 +943,7 @@ export default {
 			const displayName = reaction.actorDisplayName.trim()
 
 			if (reaction.actorType === ATTENDEE.ACTOR_TYPE.GUESTS) {
-				return this.$store.getters.getGuestNameWithGuestSuffix(this.token, reaction.actorId)
+				return this.guestNameStore.getGuestNameWithGuestSuffix(this.token, reaction.actorId)
 			}
 
 			if (displayName === '') {
@@ -850,34 +952,30 @@ export default {
 
 			return displayName
 		},
+
+		toggleCombinedSystemMessage() {
+			this.$emit('toggle-combined-system-message')
+		},
 	},
 }
 </script>
 
 <style lang="scss" scoped>
-@import '../../../../assets/variables';
-
-.message:hover .normal-message-body {
-	border-radius: 8px;
-	background-color: var(--color-background-hover);
-}
-
 .message {
 	position: relative;
 
-	&__last {
-		margin-bottom: 12px;
+	&:hover .normal-message-body,
+	&:hover .combined-system {
+		border-radius: 8px;
+		background-color: var(--color-background-hover);
 	}
 }
 
 .message-body {
 	padding: 4px;
-	font-size: $chat-font-size;
-	line-height: $chat-line-height;
+	font-size: var(--default-font-size);
+	line-height: var(--default-line-height);
 	position: relative;
-	&__author {
-		color: var(--color-text-maxcontrast);
-	}
 	&__main {
 		display: flex;
 		justify-content: space-between;
@@ -913,11 +1011,10 @@ export default {
 				display: flex;
 				border-radius: var(--border-radius-large);
 				align-items: center;
-			}
-
-			:deep(.rich-text--wrapper) {
-				white-space: pre-wrap;
-				word-break: break-word;
+				:deep(.rich-text--wrapper) {
+					flex-grow: 1;
+					text-align: start;
+				}
 			}
 
 			&--quote {
@@ -932,7 +1029,7 @@ export default {
 			user-select: none;
 			display: flex;
 			color: var(--color-text-maxcontrast);
-			font-size: $chat-font-size;
+			font-size: var(--default-font-size);
 			flex: 1 0 auto;
 			padding: 0 8px 0 8px;
 		}
@@ -955,7 +1052,7 @@ export default {
 }
 
 .date {
-	margin-right: $clickable-area;
+	margin-right: var(--default-clickable-area);
 	&--self {
 		margin-right: 0;
 	}
@@ -967,7 +1064,7 @@ export default {
 	padding: 4px 4px 4px 8px;
 }
 
-.highlight-animation {
+.message--highlighted {
 	animation: highlight-animation 5s 1;
 	border-radius: 8px;
 }
@@ -998,9 +1095,8 @@ export default {
 }
 
 .message-status {
-	margin: -8px 0;
-	width: $clickable-area;
-	height: $clickable-area;
+	width: var(--default-clickable-area);
+	height: 24px;
 	display: flex;
 	justify-content: center;
 	align-items: center;
@@ -1028,5 +1124,85 @@ export default {
 
 .reaction-details {
 	padding: 8px;
+}
+
+.message-buttons-bar {
+	display: flex;
+	right: 14px;
+	top: 8px;
+	position: sticky;
+	background-color: var(--color-main-background);
+	border-radius: calc(var(--default-clickable-area) / 2);
+	box-shadow: 0 0 4px 0 var(--color-box-shadow);
+	height: 44px;
+	z-index: 1;
+
+	& h6 {
+		margin-left: auto;
+	}
+}
+
+.message-body__main__text--markdown {
+	position: relative;
+
+	.message-copy-code {
+		position: absolute;
+		top: 0;
+		right: 4px;
+		margin-top: 4px;
+		background-color: var(--color-background-dark);
+	}
+
+	:deep(.rich-text--wrapper) {
+		text-align: start;
+
+		// Hardcode to prevent RTL affecting on user mentions
+		.rich-text--component {
+			direction: ltr;
+		}
+
+		// Overwrite core styles, otherwise h4 is lesser than default font-size
+		h4 {
+			font-size: 100%;
+		}
+
+		em {
+			font-style: italic;
+		}
+
+		ul,
+		ol {
+			padding-left: 0;
+			padding-inline-start: 15px;
+		}
+
+		pre {
+			padding: 4px;
+			margin: 2px 0;
+			border-radius: var(--border-radius);
+			background-color: var(--color-background-dark);
+			overflow-x: auto;
+
+			& code {
+				margin: 0;
+				padding: 0;
+			}
+		}
+
+		code {
+			display: inline-block;
+			padding: 2px 4px;
+			margin: 2px 0;
+			border-radius: var(--border-radius);
+			background-color: var(--color-background-dark);
+		}
+
+		blockquote {
+			padding-left: 0;
+			padding-inline-start: 13px;
+			border-left: none;
+			border-inline-start: 4px solid var(--color-border);
+		}
+	}
 }
 </style>

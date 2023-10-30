@@ -33,18 +33,12 @@ use OCP\IDBConnection;
 use OCP\Security\ISecureRandom;
 
 class SessionService {
-	protected SessionMapper $sessionMapper;
-	protected IDBConnection $connection;
-	protected ISecureRandom $secureRandom;
 
 	public function __construct(
-		SessionMapper $sessionMapper,
-		IDBConnection $connection,
-		ISecureRandom $secureRandom,
+		protected SessionMapper $sessionMapper,
+		protected IDBConnection $connection,
+		protected ISecureRandom $secureRandom,
 	) {
-		$this->sessionMapper = $sessionMapper;
-		$this->connection = $connection;
-		$this->secureRandom = $secureRandom;
 	}
 
 	/**
@@ -68,6 +62,18 @@ class SessionService {
 
 	public function updateLastPing(Session $session, int $lastPing): void {
 		$session->setLastPing($lastPing);
+		$this->sessionMapper->update($session);
+	}
+
+	/**
+	 * @throws \InvalidArgumentException
+	 */
+	public function updateSessionState(Session $session, int $state): void {
+		if (!in_array($state, [Session::STATE_INACTIVE, Session::STATE_ACTIVE], true)) {
+			throw new \InvalidArgumentException('state');
+		}
+
+		$session->setState($state);
 		$this->sessionMapper->update($session);
 	}
 

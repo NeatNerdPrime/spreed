@@ -1,29 +1,45 @@
 import { createLocalVue } from '@vue/test-utils'
+import flushPromises from 'flush-promises'
 import mockConsole from 'jest-mock-console'
 import { cloneDeep } from 'lodash'
+import { createPinia, setActivePinia } from 'pinia'
 import Vuex from 'vuex'
 
 import { showError } from '@nextcloud/dialogs'
 
 import {
-	ATTENDEE,
+	ATTENDEE, CHAT,
 } from '../constants.js'
+import {
+	fetchNoteToSelfConversation,
+} from '../services/conversationsService.js'
 import {
 	deleteMessage,
 	updateLastReadMessage,
 	fetchMessages,
+	getMessageContext,
 	lookForNewMessages,
 	postNewMessage,
+	postRichObjectToConversation,
 } from '../services/messagesService.js'
+import { useGuestNameStore } from '../stores/guestName.js'
+import { generateOCSErrorResponse, generateOCSResponse } from '../test-helpers.js'
 import CancelableRequest from '../utils/cancelableRequest.js'
 import messagesStore from './messagesStore.js'
+import storeConfig from './storeConfig.js'
 
 jest.mock('../services/messagesService', () => ({
 	deleteMessage: jest.fn(),
 	updateLastReadMessage: jest.fn(),
 	fetchMessages: jest.fn(),
+	getMessageContext: jest.fn(),
 	lookForNewMessages: jest.fn(),
 	postNewMessage: jest.fn(),
+	postRichObjectToConversation: jest.fn(),
+}))
+
+jest.mock('../services/conversationsService', () => ({
+	fetchNoteToSelfConversation: jest.fn(),
 }))
 
 jest.mock('../utils/cancelableRequest')
@@ -41,6 +57,7 @@ describe('messagesStore', () => {
 	beforeEach(() => {
 		localVue = createLocalVue()
 		localVue.use(Vuex)
+		setActivePinia(createPinia())
 
 		testStoreConfig = cloneDeep(messagesStore)
 
@@ -55,7 +72,7 @@ describe('messagesStore', () => {
 	})
 
 	describe('processMessage', () => {
-		test('adds message to the list by token', () => {
+		test('adds message to the store by token', () => {
 			const message1 = {
 				id: 1,
 				token: TOKEN,
@@ -65,7 +82,49 @@ describe('messagesStore', () => {
 			expect(store.getters.messagesList(TOKEN)[0]).toBe(message1)
 		})
 
-		test('adds message with its parent to the list', () => {
+		test('doesn\'t add specific messages to the store', () => {
+			testStoreConfig = cloneDeep(storeConfig)
+			testStoreConfig.modules.pollStore.getters.debounceGetPollData = jest.fn()
+			testStoreConfig.modules.reactionsStore.actions.resetReactions = jest.fn()
+			store = new Vuex.Store(testStoreConfig)
+
+			const messages = [{
+				id: 2,
+				token: TOKEN,
+				systemMessage: 'message_deleted',
+				parent: { id: 1 },
+			}, {
+				id: 3,
+				token: TOKEN,
+				systemMessage: 'reaction',
+				parent: { id: 1 },
+			}, {
+				id: 4,
+				token: TOKEN,
+				systemMessage: 'reaction_deleted',
+				parent: { id: 1 },
+			}, {
+				id: 5,
+				token: TOKEN,
+				systemMessage: 'reaction_revoked',
+				parent: { id: 1 },
+			}, {
+				id: 6,
+				token: TOKEN,
+				systemMessage: 'poll_voted',
+				messageParameters: {
+					poll: { id: 1 },
+				},
+			}]
+
+			messages.forEach(message => {
+				store.dispatch('processMessage', message)
+			})
+
+			expect(store.getters.messagesList(TOKEN)).toHaveLength(0)
+		})
+
+		test('adds user\'s message with included parent to the store', () => {
 			const parentMessage = {
 				id: 1,
 				token: TOKEN,
@@ -74,15 +133,11 @@ describe('messagesStore', () => {
 				id: 2,
 				token: TOKEN,
 				parent: parentMessage,
+				messageType: 'comment',
 			}
 
 			store.dispatch('processMessage', message1)
-			expect(store.getters.messagesList(TOKEN)[0]).toBe(parentMessage)
-			expect(store.getters.messagesList(TOKEN)[1]).toStrictEqual({
-				id: 2,
-				token: TOKEN,
-				parent: 1,
-			})
+			expect(store.getters.messagesList(TOKEN)).toMatchObject([message1])
 		})
 
 		test('deletes matching temporary message when referenced', () => {
@@ -152,6 +207,10 @@ describe('messagesStore', () => {
 		let message
 
 		beforeEach(() => {
+			testStoreConfig = cloneDeep(storeConfig)
+			testStoreConfig.modules.reactionsStore.actions.resetReactions = jest.fn()
+			store = new Vuex.Store(testStoreConfig)
+
 			message = {
 				id: 10,
 				token: TOKEN,
@@ -161,68 +220,69 @@ describe('messagesStore', () => {
 			store.dispatch('processMessage', message)
 		})
 
-		test('deletes from server and replaces with returned system message', async () => {
-			deleteMessage.mockResolvedValueOnce({
-				status: 200,
-				data: {
-					ocs: {
-						data: {
-							id: 10,
-							token: TOKEN,
-							message: '(deleted)',
-						},
-					},
+		test('deletes from server and replaces deleted message with response', async () => {
+			const payload = {
+				id: 11,
+				token: TOKEN,
+				message: '(deleted)',
+				systemMessage: 'message_deleted',
+				parent: {
+					id: 10,
+					token: TOKEN,
+					message: 'parent message deleted',
+					messageType: 'comment_deleted',
 				},
-			})
+			}
+			const response = generateOCSResponse({ payload })
+			deleteMessage.mockResolvedValueOnce(response)
 
 			const status = await store.dispatch('deleteMessage', { message, placeholder: 'placeholder-text' })
 
 			expect(deleteMessage).toHaveBeenCalledWith(message)
 			expect(status).toBe(200)
 
-			expect(store.getters.messagesList(TOKEN)).toStrictEqual([{
+			expect(store.getters.messagesList(TOKEN)).toMatchObject([{
 				id: 10,
 				token: TOKEN,
-				message: '(deleted)',
+				message: 'parent message deleted',
 				messageType: 'comment_deleted',
 			}])
 		})
 
-		test('deletes from server and replaces with returned system message including parent', async () => {
-			deleteMessage.mockResolvedValueOnce({
-				status: 200,
-				data: {
-					ocs: {
-						data: {
-							id: 10,
-							token: TOKEN,
-							message: '(deleted)',
-							parent: {
-								id: 5,
-								token: TOKEN,
-								message: 'parent message',
-							},
-						},
-					},
+		test('deletes from server but doesn\'t replace if deleted message is not in the store', async () => {
+			const payload = {
+				id: 11,
+				token: TOKEN,
+				message: '(deleted)',
+				systemMessage: 'message_deleted',
+				parent: {
+					id: 9,
+					token: TOKEN,
+					message: 'parent message deleted',
+					messageType: 'comment_deleted',
 				},
-			})
+			}
+			const response = generateOCSResponse({ payload })
+			deleteMessage.mockResolvedValueOnce(response)
 
 			const status = await store.dispatch('deleteMessage', { message, placeholder: 'placeholder-text' })
 
 			expect(deleteMessage).toHaveBeenCalledWith(message)
 			expect(status).toBe(200)
 
-			expect(store.getters.messagesList(TOKEN)).toStrictEqual([{
-				id: 5,
-				token: TOKEN,
-				message: 'parent message',
-			}, {
-				id: 10,
-				token: TOKEN,
-				message: '(deleted)',
-				messageType: 'comment_deleted',
-				parent: 5,
-			}])
+			expect(store.getters.messagesList(TOKEN)).toMatchObject([message])
+		})
+
+		test('keeps message in list if an error status comes from server', async () => {
+			const error = generateOCSErrorResponse({ payload: {}, status: 400 })
+			deleteMessage.mockRejectedValueOnce(error)
+
+			await store.dispatch('deleteMessage', { message, placeholder: 'placeholder-text' })
+				.catch(error => {
+					expect(error.status).toBe(400)
+
+					expect(store.getters.messagesList(TOKEN)).toMatchObject([message])
+				})
 		})
 
 		test('shows placeholder while deletion is in progress', () => {
@@ -297,7 +357,7 @@ describe('messagesStore', () => {
 			expect(getActorTypeMock).toHaveBeenCalled()
 			expect(getDisplayNameMock).toHaveBeenCalled()
 
-			expect(temporaryMessage).toStrictEqual({
+			expect(temporaryMessage).toMatchObject({
 				id: 'temp-1577908800000',
 				actorId: 'actor-id-1',
 				actorType: ATTENDEE.ACTOR_TYPE.USERS,
@@ -316,10 +376,16 @@ describe('messagesStore', () => {
 		})
 
 		test('creates temporary message with message to be replied', async () => {
-			getMessageToBeRepliedMock.mockReset()
-			getMessageToBeRepliedMock.mockReturnValue(() => ({
+			const parent = {
 				id: 123,
-			}))
+				token: TOKEN,
+				message: 'hello',
+			}
+
+			store.dispatch('processMessage', parent)
+
+			getMessageToBeRepliedMock.mockReset()
+			getMessageToBeRepliedMock.mockReturnValue(() => (123))
 
 			const temporaryMessage = await store.dispatch('createTemporaryMessage', {
 				text: 'blah',
@@ -330,7 +396,7 @@ describe('messagesStore', () => {
 				localUrl: null,
 			})
 
-			expect(temporaryMessage).toStrictEqual({
+			expect(temporaryMessage).toMatchObject({
 				id: 'temp-1577908800000',
 				actorId: 'actor-id-1',
 				actorType: ATTENDEE.ACTOR_TYPE.USERS,
@@ -341,11 +407,11 @@ describe('messagesStore', () => {
 				message: 'blah',
 				messageParameters: {},
 				token: TOKEN,
+				parent,
 				isReplyable: false,
 				sendingFailure: '',
 				reactions: {},
 				referenceId: expect.stringMatching(/^[a-zA-Z0-9]{64}$/),
-				parent: 123,
 			})
 		})
 
@@ -364,7 +430,7 @@ describe('messagesStore', () => {
 				localUrl: 'local-url://original-name.txt',
 			})
 
-			expect(temporaryMessage).toStrictEqual({
+			expect(temporaryMessage).toMatchObject({
 				id: expect.stringMatching(/^temp-1577908800000-upload-id-1-0\.[0-9]*$/),
 				actorId: 'actor-id-1',
 				actorType: ATTENDEE.ACTOR_TYPE.USERS,
@@ -405,7 +471,7 @@ describe('messagesStore', () => {
 
 			store.dispatch('addTemporaryMessage', temporaryMessage)
 
-			expect(store.getters.messagesList(TOKEN)).toStrictEqual([{
+			expect(store.getters.messagesList(TOKEN)).toMatchObject([{
 				id: 'temp-1577908800000',
 				actorId: 'actor-id-1',
 				actorType: ATTENDEE.ACTOR_TYPE.USERS,
@@ -428,7 +494,7 @@ describe('messagesStore', () => {
 			temporaryMessage.message = 'replaced'
 			store.dispatch('addTemporaryMessage', temporaryMessage)
 
-			expect(store.getters.messagesList(TOKEN)).toStrictEqual([{
+			expect(store.getters.messagesList(TOKEN)).toMatchObject([{
 				id: 'temp-1577908800000',
 				actorId: 'actor-id-1',
 				actorType: ATTENDEE.ACTOR_TYPE.USERS,
@@ -462,7 +528,7 @@ describe('messagesStore', () => {
 				reason: 'failure-reason',
 			})
 
-			expect(store.getters.messagesList(TOKEN)).toStrictEqual([{
+			expect(store.getters.messagesList(TOKEN)).toMatchObject([{
 				id: 'temp-1577908800000',
 				actorId: 'actor-id-1',
 				actorType: ATTENDEE.ACTOR_TYPE.USERS,
@@ -508,7 +574,7 @@ describe('messagesStore', () => {
 
 			store.dispatch('addTemporaryMessage', temporaryMessage)
 
-			expect(store.getters.getTemporaryReferences(TOKEN, temporaryMessage.referenceId)).toStrictEqual([{
+			expect(store.getters.getTemporaryReferences(TOKEN, temporaryMessage.referenceId)).toMatchObject([{
 				id: 'temp-1577908800000',
 				actorId: 'actor-id-1',
 				actorType: ATTENDEE.ACTOR_TYPE.USERS,
@@ -710,16 +776,17 @@ describe('messagesStore', () => {
 
 	describe('fetchMessages', () => {
 		let updateLastCommonReadMessageAction
-		let setGuestNameIfEmptyAction
+		let addGuestNameAction
 		let cancelFunctionMock
 
 		beforeEach(() => {
 			testStoreConfig = cloneDeep(messagesStore)
+			const guestNameStore = useGuestNameStore()
 
 			updateLastCommonReadMessageAction = jest.fn()
-			setGuestNameIfEmptyAction = jest.fn()
+			addGuestNameAction = jest.fn()
 			testStoreConfig.actions.updateLastCommonReadMessage = updateLastCommonReadMessageAction
-			testStoreConfig.actions.setGuestNameIfEmpty = setGuestNameIfEmptyAction
+			guestNameStore.addGuestName = addGuestNameAction
 
 			cancelFunctionMock = jest.fn()
 			CancelableRequest.mockImplementation((request) => {
@@ -742,18 +809,13 @@ describe('messagesStore', () => {
 				token: TOKEN,
 				actorType: ATTENDEE.ACTOR_TYPE.GUESTS,
 			}]
-			const response = {
+			const response = generateOCSResponse({
 				headers: {
 					'x-chat-last-common-read': '123',
 					'x-chat-last-given': '100',
 				},
-				data: {
-					ocs: {
-						data: messages,
-					},
-				},
-			}
-
+				payload: messages,
+			})
 			fetchMessages.mockResolvedValueOnce(response)
 
 			await store.dispatch('fetchMessages', {
@@ -770,7 +832,7 @@ describe('messagesStore', () => {
 				token: TOKEN,
 				lastKnownMessageId: 100,
 				includeLastKnown: true,
-				limit: 100,
+				limit: CHAT.FETCH_LIMIT,
 			}, {
 				dummyOption: true,
 			})
@@ -778,7 +840,7 @@ describe('messagesStore', () => {
 			expect(updateLastCommonReadMessageAction)
 				.toHaveBeenCalledWith(expect.anything(), { token: TOKEN, lastCommonReadMessage: 123 })
 
-			expect(setGuestNameIfEmptyAction).toHaveBeenCalledWith(expect.anything(), messages[1])
+			expect(addGuestNameAction).toHaveBeenCalledWith(messages[1], { noUpdate: true })
 
 			expect(store.getters.messagesList(TOKEN)).toStrictEqual(messages)
 			expect(store.getters.getFirstKnownMessageId(TOKEN)).toBe(100)
@@ -795,18 +857,13 @@ describe('messagesStore', () => {
 				token: TOKEN,
 				actorType: ATTENDEE.ACTOR_TYPE.GUESTS,
 			}]
-			const response = {
+			const response = generateOCSResponse({
 				headers: {
 					'x-chat-last-common-read': '123',
 					'x-chat-last-given': '100',
 				},
-				data: {
-					ocs: {
-						data: messages,
-					},
-				},
-			}
-
+				payload: messages,
+			})
 			fetchMessages.mockResolvedValueOnce(response)
 
 			await store.dispatch('fetchMessages', {
@@ -823,7 +880,7 @@ describe('messagesStore', () => {
 				token: TOKEN,
 				lastKnownMessageId: 100,
 				includeLastKnown: false,
-				limit: 100,
+				limit: CHAT.FETCH_LIMIT,
 			}, {
 				dummyOption: true,
 			})
@@ -831,7 +888,7 @@ describe('messagesStore', () => {
 			expect(updateLastCommonReadMessageAction)
 				.toHaveBeenCalledWith(expect.anything(), { token: TOKEN, lastCommonReadMessage: 123 })
 
-			expect(setGuestNameIfEmptyAction).toHaveBeenCalledWith(expect.anything(), messages[1])
+			expect(addGuestNameAction).toHaveBeenCalledWith(messages[1], { noUpdate: true })
 
 			expect(store.getters.messagesList(TOKEN)).toStrictEqual(messages)
 			expect(store.getters.getFirstKnownMessageId(TOKEN)).toBe(100)
@@ -872,11 +929,154 @@ describe('messagesStore', () => {
 		})
 	})
 
+	describe('get message context', () => {
+		let updateLastCommonReadMessageAction
+		let addGuestNameAction
+		let cancelFunctionMock
+
+		beforeEach(() => {
+			testStoreConfig = cloneDeep(messagesStore)
+			const guestNameStore = useGuestNameStore()
+
+			updateLastCommonReadMessageAction = jest.fn()
+			addGuestNameAction = jest.fn()
+			testStoreConfig.actions.updateLastCommonReadMessage = updateLastCommonReadMessageAction
+			guestNameStore.addGuestName = addGuestNameAction
+
+			cancelFunctionMock = jest.fn()
+			CancelableRequest.mockImplementation((request) => {
+				return {
+					request,
+					cancel: cancelFunctionMock,
+				}
+			})
+
+			store = new Vuex.Store(testStoreConfig)
+		})
+
+		test('get context around specified message id', async () => {
+			const messages = [{
+				id: 1,
+				token: TOKEN,
+				actorType: ATTENDEE.ACTOR_TYPE.USERS,
+			}, {
+				id: 2,
+				token: TOKEN,
+				actorType: ATTENDEE.ACTOR_TYPE.GUESTS,
+			}]
+			const response = generateOCSResponse({
+				headers: {
+					'x-chat-last-common-read': '1',
+					'x-chat-last-given': '2',
+				},
+				payload: messages,
+			})
+			getMessageContext.mockResolvedValueOnce(response)
+
+			await store.dispatch('getMessageContext', {
+				token: TOKEN,
+				messageId: 1,
+				requestOptions: {
+					dummyOption: true,
+				},
+				minimumVisible: 0,
+			})
+
+			expect(getMessageContext).toHaveBeenCalledWith({
+				token: TOKEN,
+				messageId: 1,
+				limit: CHAT.FETCH_LIMIT / 2,
+			}, {
+				dummyOption: true,
+			})
+
+			expect(updateLastCommonReadMessageAction)
+				.toHaveBeenCalledWith(expect.anything(), { token: TOKEN, lastCommonReadMessage: 1 })
+
+			expect(addGuestNameAction).toHaveBeenCalledWith(messages[1], { noUpdate: true })
+
+			expect(store.getters.messagesList(TOKEN)).toStrictEqual(messages)
+			expect(store.getters.getFirstKnownMessageId(TOKEN)).toBe(1)
+			expect(store.getters.getLastKnownMessageId(TOKEN)).toBe(2)
+		})
+
+		test('fetch additional messages around context', async () => {
+			const messagesContext = [{
+				id: 3,
+				token: TOKEN,
+				actorType: ATTENDEE.ACTOR_TYPE.USERS,
+			}, {
+				id: 4,
+				token: TOKEN,
+				actorType: ATTENDEE.ACTOR_TYPE.GUESTS,
+			}]
+			const messagesFetch = [{
+				id: 1,
+				token: TOKEN,
+				actorType: ATTENDEE.ACTOR_TYPE.USERS,
+			}, {
+				id: 2,
+				token: TOKEN,
+				actorType: ATTENDEE.ACTOR_TYPE.GUESTS,
+			}]
+			const responseContext = generateOCSResponse({
+				headers: {
+					'x-chat-last-common-read': '2',
+					'x-chat-last-given': '4',
+				},
+				payload: messagesContext,
+			})
+			getMessageContext.mockResolvedValueOnce(responseContext)
+
+			const responseFetch = generateOCSResponse({
+				headers: {
+					'x-chat-last-common-read': '2',
+					'x-chat-last-given': '1',
+				},
+				payload: messagesFetch,
+			})
+			fetchMessages.mockResolvedValueOnce(responseFetch)
+
+			await store.dispatch('getMessageContext', {
+				token: TOKEN,
+				messageId: 3,
+				requestOptions: {
+					dummyOption: true,
+				},
+				minimumVisible: 2,
+			})
+
+			expect(getMessageContext).toHaveBeenCalledWith({
+				token: TOKEN,
+				messageId: 3,
+				limit: CHAT.FETCH_LIMIT / 2,
+			}, {
+				dummyOption: true,
+			})
+			expect(fetchMessages).toHaveBeenCalledWith({
+				token: TOKEN,
+				lastKnownMessageId: 3,
+				includeLastKnown: false,
+				limit: CHAT.FETCH_LIMIT,
+			}, undefined)
+
+			expect(updateLastCommonReadMessageAction).toHaveBeenCalledTimes(2)
+			expect(updateLastCommonReadMessageAction).toHaveBeenNthCalledWith(1, expect.anything(), { token: TOKEN, lastCommonReadMessage: 2 })
+			expect(updateLastCommonReadMessageAction).toHaveBeenNthCalledWith(2, expect.anything(), { token: TOKEN, lastCommonReadMessage: 2 })
+
+			expect(addGuestNameAction).toHaveBeenCalledWith(messagesContext[1], { noUpdate: true })
+
+			expect(store.getters.messagesList(TOKEN)).toStrictEqual([...messagesFetch, ...messagesContext])
+			expect(store.getters.getFirstKnownMessageId(TOKEN)).toBe(1)
+			expect(store.getters.getLastKnownMessageId(TOKEN)).toBe(4)
+		})
+	})
+
 	describe('look for new messages', () => {
 		let updateLastCommonReadMessageAction
 		let updateConversationLastMessageAction
 		let updateUnreadMessagesMutation
-		let forceGuestNameAction
+		let addGuestNameAction
 		let cancelFunctionMocks
 		let conversationMock
 		let getActorIdMock
@@ -885,6 +1085,7 @@ describe('messagesStore', () => {
 
 		beforeEach(() => {
 			testStoreConfig = cloneDeep(messagesStore)
+			const guestNameStore = useGuestNameStore()
 
 			conversationMock = jest.fn()
 			getActorIdMock = jest.fn()
@@ -898,10 +1099,10 @@ describe('messagesStore', () => {
 			updateConversationLastMessageAction = jest.fn()
 			updateLastCommonReadMessageAction = jest.fn()
 			updateUnreadMessagesMutation = jest.fn()
-			forceGuestNameAction = jest.fn()
+			addGuestNameAction = jest.fn()
 			testStoreConfig.actions.updateConversationLastMessage = updateConversationLastMessageAction
 			testStoreConfig.actions.updateLastCommonReadMessage = updateLastCommonReadMessageAction
-			testStoreConfig.actions.forceGuestName = forceGuestNameAction
+			guestNameStore.addGuestName = addGuestNameAction
 			testStoreConfig.mutations.updateUnreadMessages = updateUnreadMessagesMutation
 
 			cancelFunctionMocks = []
@@ -927,18 +1128,13 @@ describe('messagesStore', () => {
 				token: TOKEN,
 				actorType: ATTENDEE.ACTOR_TYPE.GUESTS,
 			}]
-			const response = {
+			const response = generateOCSResponse({
 				headers: {
 					'x-chat-last-common-read': '123',
 					'x-chat-last-given': '100',
 				},
-				data: {
-					ocs: {
-						data: messages,
-					},
-				},
-			}
-
+				payload: messages,
+			})
 			lookForNewMessages.mockResolvedValueOnce(response)
 
 			// smaller number to make it update
@@ -957,6 +1153,7 @@ describe('messagesStore', () => {
 			expect(lookForNewMessages).toHaveBeenCalledWith({
 				token: TOKEN,
 				lastKnownMessageId: 100,
+				limit: CHAT.FETCH_LIMIT,
 			}, {
 				dummyOption: true,
 			})
@@ -967,7 +1164,7 @@ describe('messagesStore', () => {
 			expect(updateLastCommonReadMessageAction)
 				.toHaveBeenCalledWith(expect.anything(), { token: TOKEN, lastCommonReadMessage: 123 })
 
-			expect(forceGuestNameAction).toHaveBeenCalledWith(expect.anything(), messages[1])
+			expect(addGuestNameAction).toHaveBeenCalledWith(messages[1], { noUpdate: false })
 
 			expect(store.getters.messagesList(TOKEN)).toStrictEqual(messages)
 			expect(store.getters.getLastKnownMessageId(TOKEN)).toBe(100)
@@ -986,15 +1183,9 @@ describe('messagesStore', () => {
 				token: TOKEN,
 				actorType: ATTENDEE.ACTOR_TYPE.GUESTS,
 			}]
-			const response = {
-				headers: {},
-				data: {
-					ocs: {
-						data: messages,
-					},
-				},
-			}
-
+			const response = generateOCSResponse({
+				payload: messages,
+			})
 			lookForNewMessages.mockResolvedValueOnce(response)
 
 			// smaller number to make it update
@@ -1084,18 +1275,13 @@ describe('messagesStore', () => {
 			 * @param {object} expectedPayload The parameters that should be updated when receiving the messages
 			 */
 			async function testUpdateMessageCounters(messages, expectedPayload) {
-				const response = {
+				const response = generateOCSResponse({
 					headers: {
 						'x-chat-last-common-read': '123',
 						'x-chat-last-given': '100',
 					},
-					data: {
-						ocs: {
-							data: messages,
-						},
-					},
-				}
-
+					payload: messages,
+				})
 				lookForNewMessages.mockResolvedValueOnce(response)
 
 				// smaller number to make it update
@@ -1386,6 +1572,12 @@ describe('messagesStore', () => {
 		})
 
 		test('posts new message', async () => {
+			conversationMock.mockReturnValue({
+				token: TOKEN,
+				lastMessage: { id: 100 },
+				lastReadMessage: 50,
+			})
+
 			const temporaryMessage = {
 				id: 'temp-123',
 				message: 'blah',
@@ -1399,42 +1591,21 @@ describe('messagesStore', () => {
 				message: 'blah',
 			}
 
-			const response = {
+			const response = generateOCSResponse({
 				headers: {
 					'x-chat-last-common-read': '100',
 				},
-				data: {
-					ocs: {
-						data: messageResponse,
-					},
-				},
-			}
-
-			store.dispatch('addTemporaryMessage', temporaryMessage)
-
-			conversationMock.mockReturnValue({
-				token: TOKEN,
-				lastMessage: { id: 100 },
-				lastReadMessage: 50,
+				payload: messageResponse,
 			})
+			postNewMessage.mockResolvedValueOnce(response)
 
-			let resolvePromise
-			postNewMessage.mockReturnValueOnce(new Promise((resolve, reject) => {
-				resolvePromise = resolve
-			}))
-
-			const returnedPromise = store.dispatch('postNewMessage', { temporaryMessage, options: { silent: false } }).catch(() => {})
+			store.dispatch('postNewMessage', { temporaryMessage, options: { silent: false } }).catch(() => {
+			})
+			expect(postNewMessage).toHaveBeenCalledWith(temporaryMessage, { silent: false })
 			expect(store.getters.isSendingMessages).toBe(true)
 
-			resolvePromise(response)
-
-			const receivedResponse = await returnedPromise
-
+			await flushPromises()
 			expect(store.getters.isSendingMessages).toBe(false)
-
-			expect(receivedResponse).toBe(response)
-
-			expect(postNewMessage).toHaveBeenCalledWith(temporaryMessage, { silent: false })
 
 			expect(updateLastCommonReadMessageAction).toHaveBeenCalledWith(
 				expect.anything(),
@@ -1505,8 +1676,6 @@ describe('messagesStore', () => {
 				status: statusCode,
 			}
 
-			store.dispatch('addTemporaryMessage', temporaryMessage)
-
 			postNewMessage.mockRejectedValueOnce({ isAxiosError: true, response })
 			await expect(
 				store.dispatch('postNewMessage', { temporaryMessage, options: { silent: false } })
@@ -1548,7 +1717,6 @@ describe('messagesStore', () => {
 				sendingFailure: '',
 			}
 
-			store.dispatch('addTemporaryMessage', temporaryMessage)
 			store.dispatch('postNewMessage', { temporaryMessage, options: { silent: false } }).catch(() => {})
 
 			jest.advanceTimersByTime(60000)
@@ -1574,22 +1742,14 @@ describe('messagesStore', () => {
 				sendingFailure: '',
 			}
 
-			const response = {
-				headers: {},
-				data: {
-					ocs: {
-						data: {
-							id: 200,
-							token: TOKEN,
-							message: 'blah',
-						},
-					},
-				},
+			const payload = {
+				id: 200,
+				token: TOKEN,
+				message: 'blah',
 			}
-
+			const response = generateOCSResponse({ payload })
 			postNewMessage.mockResolvedValueOnce(response)
 
-			store.dispatch('addTemporaryMessage', temporaryMessage)
 			await store.dispatch('postNewMessage', { temporaryMessage, options: { silent: false } })
 
 			jest.advanceTimersByTime(60000)
@@ -1613,6 +1773,7 @@ describe('messagesStore', () => {
 			store = new Vuex.Store(testStoreConfig)
 			store.dispatch('setLastKnownMessageId', { token: TOKEN, id: lastKnownMessageId })
 		}
+
 		test('returns true if more messages are available on the server', () => {
 			setupWithValues(100, 123)
 			expect(store.getters.hasMoreMessagesToLoad(TOKEN)).toBe(true)
@@ -1624,6 +1785,185 @@ describe('messagesStore', () => {
 		test('returns false if known last message id is past the one from known conversation', () => {
 			setupWithValues(200, 123)
 			expect(store.getters.hasMoreMessagesToLoad(TOKEN)).toBe(false)
+		})
+	})
+
+	describe('Forward a message', () => {
+		let conversations
+		let message1
+		let messageToBeForwarded
+		let targetToken
+		let messageExpected
+
+		beforeEach(() => {
+			localVue = createLocalVue()
+			localVue.use(Vuex)
+
+			testStoreConfig = cloneDeep(storeConfig)
+			store = new Vuex.Store(testStoreConfig)
+
+			message1 = {
+				id: 1,
+				token: TOKEN,
+				message: 'simple text message',
+				messageParameters: {},
+			}
+			conversations = [
+				{
+					token: TOKEN,
+					type: 3,
+					displayName: 'conversation 1',
+				},
+				{
+					token: 'token-self',
+					type: 6,
+					displayName: 'Note to self',
+				},
+				{
+					token: 'token-2',
+					type: 3,
+					displayName: 'conversation 2',
+				},
+			]
+		})
+
+		test('forwards a message to the conversation when a token is given', () => {
+			// Arrange
+			targetToken = 'token-2'
+			messageToBeForwarded = message1
+			messageExpected = cloneDeep(message1)
+			messageExpected.token = targetToken
+
+			// Act
+			store.dispatch('forwardMessage', { targetToken, messageToBeForwarded })
+
+			// Assert
+			expect(postNewMessage).toHaveBeenCalledWith(messageExpected, { silent: false })
+		})
+		test('forwards a message to Note to self when no token is given ', () => {
+			// Arrange
+			targetToken = 'token-self'
+			messageToBeForwarded = message1
+			messageExpected = cloneDeep(message1)
+			messageExpected.token = targetToken
+
+			store.dispatch('addConversation', conversations[1])
+
+			// Act
+			store.dispatch('forwardMessage', { messageToBeForwarded })
+
+			// Assert
+			expect(postNewMessage).toHaveBeenCalledWith(messageExpected, { silent: false })
+		})
+
+		test('generates Note to self when it does not exist ', async () => {
+			// Arrange
+			messageToBeForwarded = message1
+			messageExpected = cloneDeep(message1)
+			messageExpected.token = 'token-self'
+
+			const response = {
+				data: {
+					ocs: {
+						data: conversations[1],
+					},
+				},
+			}
+			fetchNoteToSelfConversation.mockResolvedValueOnce(response)
+
+			// Act
+			store.dispatch('forwardMessage', { messageToBeForwarded })
+			await flushPromises()
+
+			// Assert
+			expect(store.getters.conversationsList).toContain(conversations[1])
+			expect(postNewMessage).toHaveBeenCalledWith(messageExpected, { silent: false })
+		})
+		test('removes parent message ', () => {
+			// Arrange : prepare the expected message to be forwarded
+			messageToBeForwarded = {
+				id: 1,
+				token: TOKEN,
+				parent: message1,
+				message: 'simple text message',
+				messageParameters: {},
+			}
+			messageExpected = cloneDeep(messageToBeForwarded)
+			targetToken = 'token-2'
+			messageExpected.token = targetToken
+			delete messageExpected.parent
+
+			// Act
+			store.dispatch('forwardMessage', { targetToken, messageToBeForwarded })
+
+			// Assert
+			expect(postNewMessage).toHaveBeenCalledWith(messageExpected, { silent: false })
+		})
+		test('forwards an object message', () => {
+			// Arrange
+			messageToBeForwarded = {
+				id: 1,
+				token: TOKEN,
+				message: '{object}',
+				messageParameters: {
+					object: {
+						id: '100',
+						type: 'deck-card',
+					},
+				},
+			}
+			const objectToBeForwarded = messageToBeForwarded.messageParameters.object
+			targetToken = 'token-2'
+
+			// Act
+			store.dispatch('forwardMessage', { targetToken, messageToBeForwarded })
+
+			// Assert
+			expect(postRichObjectToConversation).toHaveBeenCalledWith(
+				targetToken,
+				{
+					objectId: objectToBeForwarded.id,
+					objectType: objectToBeForwarded.type,
+					metaData: JSON.stringify(objectToBeForwarded),
+					referenceId: '',
+				},
+			)
+
+		})
+		test('forwards a message with mentions and remove the latter', () => {
+			// Arrange
+			messageToBeForwarded = {
+				id: 1,
+				token: TOKEN,
+				message: 'Hello {mention-user1}, {mention-user2}, and {mention-call1}',
+				messageParameters: {
+					'mention-user1': {
+						id: 'taylor',
+						name: 'Taylor',
+						type: 'user',
+					},
+					'mention-user2': {
+						id: 'adam driver',
+						name: 'Adam',
+						type: 'user',
+					},
+					'mention-call1': {
+						id: TOKEN,
+						name: 'Team X',
+						type: 'call',
+					},
+				},
+			}
+			targetToken = 'token-2'
+			messageExpected = cloneDeep(messageToBeForwarded)
+			messageExpected.message = 'Hello @"taylor", @"adam driver", and **Team X**'
+			messageExpected.token = targetToken
+
+			// Act
+			store.dispatch('forwardMessage', { targetToken, messageToBeForwarded })
+
+			// Assert
+			expect(postNewMessage).toHaveBeenCalledWith(messageExpected, { silent: false })
 		})
 	})
 })

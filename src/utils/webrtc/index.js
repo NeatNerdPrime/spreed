@@ -37,6 +37,7 @@ import LocalMediaModel from './models/LocalMediaModel.js'
 import SentVideoQualityThrottler from './SentVideoQualityThrottler.js'
 import './shims/MediaStream.js'
 import './shims/MediaStreamTrack.js'
+import SpeakingStatusHandler from './SpeakingStatusHandler.js'
 import initWebRtc from './webrtc.js'
 
 let webRtc = null
@@ -46,6 +47,7 @@ const localMediaModel = new LocalMediaModel()
 const mediaDevicesManager = new MediaDevicesManager()
 let callAnalyzer = null
 let sentVideoQualityThrottler = null
+let speakingStatusHandler = null
 
 // This does not really belongs here, as it is unrelated to WebRTC, but it is
 // included here for the time being until signaling and WebRTC are split.
@@ -132,7 +134,7 @@ async function connectSignaling(token) {
 		signaling.on('updateSettings', async function() {
 			const settings = await getSignalingSettings(token)
 			console.debug('Received updated settings', settings)
-			signaling.settings = settings
+			signaling.setSettings(settings)
 		})
 
 		signalingTypingHandler?.setSignaling(signaling)
@@ -150,8 +152,9 @@ let failedToStartCall = null
  * @param {object} configuration Media to connect with
  * @param {boolean} silent Whether the call should trigger a notifications and
  * sound for other participants or not
+ * @param {boolean} recordingConsent Whether the participant gave his consent to be recorded
  */
-function startCall(signaling, configuration, silent) {
+function startCall(signaling, configuration, silent, recordingConsent) {
 	let flags = PARTICIPANT.CALL_FLAG.IN_CALL
 	if (configuration) {
 		if (configuration.audio) {
@@ -162,7 +165,7 @@ function startCall(signaling, configuration, silent) {
 		}
 	}
 
-	signaling.joinCall(pendingJoinCallToken, flags, silent).then(() => {
+	signaling.joinCall(pendingJoinCallToken, flags, silent, recordingConsent).then(() => {
 		startedCall(flags)
 	}).catch(error => {
 		failedToStartCall(error)
@@ -180,6 +183,10 @@ function setupWebRtc() {
 	webRtc = initWebRtc(signaling, callParticipantCollection, localCallParticipantModel)
 	localCallParticipantModel.setWebRtc(webRtc)
 	localMediaModel.setWebRtc(webRtc)
+
+	signaling.on('sessionId', sessionId => {
+		localCallParticipantModel.setPeerId(sessionId)
+	})
 }
 
 /**
@@ -203,16 +210,18 @@ async function signalingJoinConversation(token, sessionId) {
  * @param {number} flags Bitwise combination of PARTICIPANT.CALL_FLAG
  * @param {boolean} silent Whether the call should trigger a notifications and
  * sound for other participants or not
+ * @param {boolean} recordingConsent Whether the participant gave his consent to be recorded
  * @return {Promise<void>} Resolved with the actual flags based on the
  *          available media
  */
-async function signalingJoinCall(token, flags, silent) {
+async function signalingJoinCall(token, flags, silent, recordingConsent) {
 	if (tokensInSignaling[token]) {
 		pendingJoinCallToken = token
 
 		setupWebRtc()
 
 		sentVideoQualityThrottler = new SentVideoQualityThrottler(localMediaModel, callParticipantCollection, webRtc.webrtc._videoTrackConstrainer)
+		speakingStatusHandler = new SpeakingStatusHandler(store, localMediaModel, localCallParticipantModel, callParticipantCollection)
 
 		if (signaling.hasFeature('mcu')) {
 			callAnalyzer = new CallAnalyzer(localMediaModel, localCallParticipantModel, callParticipantCollection)
@@ -262,13 +271,13 @@ async function signalingJoinCall(token, flags, silent) {
 				webRtc.off('localMediaStarted', startCallOnceLocalMediaStarted)
 				webRtc.off('localMediaError', startCallOnceLocalMediaError)
 
-				startCall(_signaling, configuration, silent)
+				startCall(_signaling, configuration, silent, recordingConsent)
 			}
 			const startCallOnceLocalMediaError = () => {
 				webRtc.off('localMediaStarted', startCallOnceLocalMediaStarted)
 				webRtc.off('localMediaError', startCallOnceLocalMediaError)
 
-				startCall(_signaling, null, silent)
+				startCall(_signaling, null, silent, recordingConsent)
 			}
 
 			// ".once" can not be used, as both handlers need to be removed when
@@ -416,6 +425,9 @@ async function signalingLeaveCall(token, all = false) {
 	sentVideoQualityThrottler.destroy()
 	sentVideoQualityThrottler = null
 
+	speakingStatusHandler.destroy()
+	speakingStatusHandler = null
+
 	callAnalyzer.destroy()
 	callAnalyzer = null
 
@@ -447,6 +459,16 @@ function signalingKill() {
 }
 
 /**
+ * Send a message through signaling
+ *
+ * @param {object} data message payload
+ * @return {Promise<void>}
+ */
+async function signalingSendCallMessage(data) {
+	await signaling.sendCallMessage(data)
+}
+
+/**
  * Sets whether the current participant is typing.
  *
  * @param {boolean} typing whether the current participant is typing.
@@ -471,6 +493,6 @@ export {
 	signalingLeaveCall,
 	signalingLeaveConversation,
 	signalingKill,
-
+	signalingSendCallMessage,
 	signalingSetTyping,
 }

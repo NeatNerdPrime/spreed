@@ -20,14 +20,18 @@
 -->
 
 <template>
-	<div ref="editable-text-field"
-		:key="forceReRenderKey"
-		class="editable-text-field">
-		<NcRichContenteditable ref="contenteditable"
+	<div ref="editable-text-field" class="editable-text-field">
+		<NcRichText v-if="!editing"
+			class="editable-text-field__output"
+			:text="text"
+			autolink
+			:use-markdown="useMarkdown" />
+		<NcRichContenteditable v-else
+			ref="richContenteditable"
 			:value.sync="text"
 			:auto-complete="()=>{}"
 			:maxlength="maxLength"
-			:contenteditable="editing && !loading"
+			:contenteditable="!loading"
 			:placeholder="placeholder"
 			@submit="handleSubmitText"
 			@keydown.esc="handleCancelEditing" />
@@ -77,11 +81,13 @@ import Pencil from 'vue-material-design-icons/Pencil.vue'
 
 import NcButton from '@nextcloud/vue/dist/Components/NcButton.js'
 import NcRichContenteditable from '@nextcloud/vue/dist/Components/NcRichContenteditable.js'
+import NcRichText from '@nextcloud/vue/dist/Components/NcRichText.js'
 import Tooltip from '@nextcloud/vue/dist/Directives/Tooltip.js'
 
 export default {
 	name: 'EditableTextField',
 	components: {
+		NcRichText,
 		Pencil,
 		Check,
 		Close,
@@ -147,6 +153,11 @@ export default {
 			type: String,
 			required: true,
 		},
+
+		useMarkdown: {
+			type: Boolean,
+			default: false,
+		},
 	},
 
 	emits: ['update:editing', 'submit-text'],
@@ -154,7 +165,6 @@ export default {
 	data() {
 		return {
 			text: this.initialText,
-			forceReRenderKey: 0,
 			overflows: null,
 		}
 	},
@@ -199,12 +209,16 @@ export default {
 
 	methods: {
 		handleEditText() {
-			const contenteditable = this.$refs.contenteditable.$refs.contenteditable
 			this.$emit('update:editing', true)
 			this.$nextTick(() => {
-				// Focus and select the text
-				contenteditable.focus()
-				document.execCommand('selectAll', false, null)
+				// Focus and select rich text
+				this.$refs.richContenteditable.focus()
+
+				// TODO upstream: declare as select() method for NcRichContenteditable
+				const range = document.createRange()
+				range.selectNodeContents(this.$refs.richContenteditable.$refs.contenteditable)
+				window.getSelection().removeAllRanges()
+				window.getSelection().addRange(range)
 			})
 		},
 
@@ -213,19 +227,14 @@ export default {
 				return
 			}
 			// Remove leading/trailing whitespaces.
-			// FIXME: remove after issue is resolved: https://github.com/nextcloud/nextcloud-vue/issues/3264
+			// FIXME upstream: https://github.com/nextcloud-libraries/nextcloud-vue/issues/4492
 			const temp = document.createElement('textarea')
-			temp.innerHTML = this.text
-			this.text = temp.value.replace(/\r\n|\n|\r/gm, '\n').trim()
+			temp.innerHTML = this.text.replace(/&/gmi, '&amp;')
+			this.text = temp.value.replace(/\r\n|\n|\r/gm, '\n').replace(/&amp;/gmi, '&')
+				.replace(/&lt;/gmi, '<').replace(/&gt;/gmi, '>').replace(/&sect;/gmi, '§').trim()
 
 			// Submit text
 			this.$emit('submit-text', this.text)
-			/**
-			 * Change the NcRichContenteditable key in order to trigger a re-render
-			 * without this all the trimmed new lines and whitespaces would
-			 * still be present in the contenteditable element.
-			 */
-			this.forceReRenderKey += 1
 		},
 
 		handleCancelEditing() {
@@ -233,12 +242,6 @@ export default {
 			this.$emit('update:editing', false)
 			// Deselect all the text that's been selected in `handleEditText`
 			window.getSelection().removeAllRanges()
-		},
-
-		checkOverflow() {
-			const textHeight = this.$refs['editable-text-field'].clientHeight
-			const contenteditableHeight = this.$refs.contenteditable.$refs.contenteditable.scrollHeight
-			this.overflows = textHeight < contenteditableHeight
 		},
 	},
 }
@@ -253,17 +256,23 @@ export default {
 	width: 100%;
 	overflow: hidden;
 	position: relative;
-	min-height: $clickable-area;
+	min-height: var(--default-clickable-area);
 	align-items: flex-end;
 
 	&__edit {
 		margin-left: var(--default-clickable-area);
 	}
+
+  &__output {
+    width: 100%;
+    padding: 10px;
+    line-height: var(--default-line-height);
+  }
 }
 
 .spinner {
-	width: $clickable-area;
-	height: $clickable-area;
+	width: var(--default-clickable-area);
+	height: var(--default-clickable-area);
 	margin: 0 0 0 44px;
 }
 
@@ -290,7 +299,7 @@ export default {
 	overflow: visible;
 	width: 100% !important;
 	background-color: transparent;
-	transition: $fade-transition;
+	transition: $transition;
 	&::before {
 		position: relative;
 	}

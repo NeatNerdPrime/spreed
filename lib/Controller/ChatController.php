@@ -5,6 +5,8 @@ declare(strict_types=1);
  *
  * @copyright Copyright (c) 2017, Daniel Calviño Sánchez (danxuliu@gmail.com)
  *
+ * @author Kate Döen <kate.doeen@nextcloud.com>
+ *
  * @license GNU AGPL version 3 or any later version
  *
  * This program is free software: you can redistribute it and/or modify
@@ -31,6 +33,7 @@ use OCA\Talk\Chat\MessageParser;
 use OCA\Talk\Chat\ReactionManager;
 use OCA\Talk\GuestManager;
 use OCA\Talk\MatterbridgeManager;
+use OCA\Talk\Middleware\Attribute\RequireLoggedInParticipant;
 use OCA\Talk\Middleware\Attribute\RequireModeratorOrNoLobby;
 use OCA\Talk\Middleware\Attribute\RequireModeratorParticipant;
 use OCA\Talk\Middleware\Attribute\RequireParticipant;
@@ -41,16 +44,20 @@ use OCA\Talk\Model\Attendee;
 use OCA\Talk\Model\Message;
 use OCA\Talk\Model\Session;
 use OCA\Talk\Participant;
+use OCA\Talk\ResponseDefinitions;
 use OCA\Talk\Room;
 use OCA\Talk\Service\AttachmentService;
 use OCA\Talk\Service\AvatarService;
 use OCA\Talk\Service\ParticipantService;
+use OCA\Talk\Service\ReminderService;
 use OCA\Talk\Service\SessionService;
 use OCA\Talk\Share\RoomShareProvider;
 use OCP\App\IAppManager;
+use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\PublicPage;
+use OCP\AppFramework\Http\Attribute\UserRateLimit;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Collaboration\AutoComplete\IManager;
@@ -70,113 +77,82 @@ use OCP\User\Events\UserLiveStatusEvent;
 use OCP\UserStatus\IManager as IUserStatusManager;
 use OCP\UserStatus\IUserStatus;
 
+/**
+ * @psalm-import-type TalkChatMentionSuggestion from ResponseDefinitions
+ * @psalm-import-type TalkChatMessage from ResponseDefinitions
+ * @psalm-import-type TalkChatMessageWithParent from ResponseDefinitions
+ * @psalm-import-type TalkChatReminder from ResponseDefinitions
+ */
 class ChatController extends AEnvironmentAwareController {
-	private ?string $userId;
-	private IUserManager $userManager;
-	private IAppManager $appManager;
-	private ChatManager $chatManager;
-	private ReactionManager $reactionManager;
-	private ParticipantService $participantService;
-	private SessionService $sessionService;
-	protected AttachmentService $attachmentService;
-	protected avatarService $avatarService;
-	private GuestManager $guestManager;
 	/** @var string[] */
 	protected array $guestNames;
-	private MessageParser $messageParser;
-	protected RoomShareProvider $shareProvider;
-	private IManager $autoCompleteManager;
-	private IUserStatusManager $statusManager;
-	protected MatterbridgeManager $matterbridgeManager;
-	private SearchPlugin $searchPlugin;
-	private ISearchResult $searchResult;
-	protected ITimeFactory $timeFactory;
-	protected IEventDispatcher $eventDispatcher;
-	protected IValidator $richObjectValidator;
-	protected ITrustedDomainHelper $trustedDomainHelper;
-	private IL10N $l;
 
 	public function __construct(
 		string $appName,
-		?string $UserId,
+		private ?string $userId,
 		IRequest $request,
-		IUserManager $userManager,
-		IAppManager $appManager,
-		ChatManager $chatManager,
-		ReactionManager $reactionManager,
-		ParticipantService $participantService,
-		SessionService $sessionService,
-		AttachmentService $attachmentService,
-		avatarService $avatarService,
-		GuestManager $guestManager,
-		MessageParser $messageParser,
-		RoomShareProvider $shareProvider,
-		IManager $autoCompleteManager,
-		IUserStatusManager $statusManager,
-		MatterbridgeManager $matterbridgeManager,
-		SearchPlugin $searchPlugin,
-		ISearchResult $searchResult,
-		ITimeFactory $timeFactory,
-		IEventDispatcher $eventDispatcher,
-		IValidator $richObjectValidator,
-		ITrustedDomainHelper $trustedDomainHelper,
-		IL10N $l,
+		private IUserManager $userManager,
+		private IAppManager $appManager,
+		private ChatManager $chatManager,
+		private ReactionManager $reactionManager,
+		private ParticipantService $participantService,
+		private SessionService $sessionService,
+		protected AttachmentService $attachmentService,
+		protected avatarService $avatarService,
+		protected ReminderService $reminderService,
+		private GuestManager $guestManager,
+		private MessageParser $messageParser,
+		protected RoomShareProvider $shareProvider,
+		private IManager $autoCompleteManager,
+		private IUserStatusManager $statusManager,
+		protected MatterbridgeManager $matterbridgeManager,
+		private SearchPlugin $searchPlugin,
+		private ISearchResult $searchResult,
+		protected ITimeFactory $timeFactory,
+		protected IEventDispatcher $eventDispatcher,
+		protected IValidator $richObjectValidator,
+		protected ITrustedDomainHelper $trustedDomainHelper,
+		private IL10N $l,
 	) {
 		parent::__construct($appName, $request);
-
-		$this->userId = $UserId;
-		$this->userManager = $userManager;
-		$this->appManager = $appManager;
-		$this->chatManager = $chatManager;
-		$this->reactionManager = $reactionManager;
-		$this->participantService = $participantService;
-		$this->sessionService = $sessionService;
-		$this->attachmentService = $attachmentService;
-		$this->avatarService = $avatarService;
-		$this->guestManager = $guestManager;
-		$this->messageParser = $messageParser;
-		$this->shareProvider = $shareProvider;
-		$this->autoCompleteManager = $autoCompleteManager;
-		$this->statusManager = $statusManager;
-		$this->matterbridgeManager = $matterbridgeManager;
-		$this->searchPlugin = $searchPlugin;
-		$this->searchResult = $searchResult;
-		$this->timeFactory = $timeFactory;
-		$this->eventDispatcher = $eventDispatcher;
-		$this->richObjectValidator = $richObjectValidator;
-		$this->trustedDomainHelper = $trustedDomainHelper;
-		$this->l = $l;
 	}
 
+	/**
+	 * @return list{0: Attendee::ACTOR_*, 1: string}
+	 */
 	protected function getActorInfo(string $actorDisplayName = ''): array {
-		if ($this->userId === null) {
-			$actorType = Attendee::ACTOR_GUESTS;
-			$actorId = $this->participant->getAttendee()->getActorId();
+		$remoteCloudId = $this->getRemoteAccessCloudId();
+		if ($remoteCloudId !== null) {
+			return [Attendee::ACTOR_FEDERATED_USERS, $remoteCloudId];
+		}
 
+		if ($this->userId === null) {
 			if ($actorDisplayName) {
 				$this->guestManager->updateName($this->room, $this->participant, $actorDisplayName);
 			}
-		} elseif ($this->userId === MatterbridgeManager::BRIDGE_BOT_USERID && $actorDisplayName) {
-			$actorType = Attendee::ACTOR_BRIDGED;
-			$actorId = str_replace(["/", "\""], "", $actorDisplayName);
-		} else {
-			$actorType = Attendee::ACTOR_USERS;
-			$actorId = $this->userId;
+			return [Attendee::ACTOR_GUESTS, $this->participant->getAttendee()->getActorId()];
+		}
+		
+		if ($this->userId === MatterbridgeManager::BRIDGE_BOT_USERID && $actorDisplayName) {
+			return [Attendee::ACTOR_BRIDGED, str_replace(['/', '"'], '', $actorDisplayName)];
 		}
 
-		return [$actorType, $actorId];
+		return [Attendee::ACTOR_USERS, $this->userId];
 	}
 
-	public function parseCommentToResponse(IComment $comment, Message $parentMessage = null): DataResponse {
+	/**
+	 * @return DataResponse<Http::STATUS_CREATED, ?TalkChatMessageWithParent, array{X-Chat-Last-Common-Read?: numeric-string}>
+	 */
+	protected function parseCommentToResponse(IComment $comment, Message $parentMessage = null): DataResponse {
 		$chatMessage = $this->messageParser->createMessage($this->room, $this->participant, $comment, $this->l);
 		$this->messageParser->parseMessage($chatMessage);
 
 		if (!$chatMessage->getVisibility()) {
-			$response = new DataResponse([], Http::STATUS_CREATED);
+			$headers = [];
 			if ($this->participant->getAttendee()->getReadPrivacy() === Participant::PRIVACY_PUBLIC) {
-				$response->addHeader('X-Chat-Last-Common-Read', (string) $this->chatManager->getLastCommonReadMessage($this->room));
+				$headers = ['X-Chat-Last-Common-Read' => (string) $this->chatManager->getLastCommonReadMessage($this->room)];
 			}
-			return $response;
+			return new DataResponse(null, Http::STATUS_CREATED, $headers);
 		}
 
 		$data = $chatMessage->toArray($this->getResponseFormat());
@@ -184,15 +160,15 @@ class ChatController extends AEnvironmentAwareController {
 			$data['parent'] = $parentMessage->toArray($this->getResponseFormat());
 		}
 
-		$response = new DataResponse($data, Http::STATUS_CREATED);
+		$headers = [];
 		if ($this->participant->getAttendee()->getReadPrivacy() === Participant::PRIVACY_PUBLIC) {
-			$response->addHeader('X-Chat-Last-Common-Read', (string) $this->chatManager->getLastCommonReadMessage($this->room));
+			$headers = ['X-Chat-Last-Common-Read' => (string) $this->chatManager->getLastCommonReadMessage($this->room)];
 		}
-		return $response;
+		return new DataResponse($data, Http::STATUS_CREATED, $headers);
 	}
 
 	/**
-	 * Sends a new chat message to the given room.
+	 * Sends a new chat message to the given room
 	 *
 	 * The author and timestamp are automatically set to the current user/guest
 	 * and time.
@@ -202,9 +178,12 @@ class ChatController extends AEnvironmentAwareController {
 	 * @param string $referenceId for the message to be able to later identify it again
 	 * @param int $replyTo Parent id which this message is a reply to
 	 * @param bool $silent If sent silent the chat message will not create any notifications
-	 * @return DataResponse the status code is "201 Created" if successful, and
-	 *         "404 Not found" if the room or session for a guest user was not
-	 *         found".
+	 * @return DataResponse<Http::STATUS_CREATED, ?TalkChatMessageWithParent, array{X-Chat-Last-Common-Read?: numeric-string}>|DataResponse<Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_REQUEST_ENTITY_TOO_LARGE, array<empty>, array{}>
+	 *
+	 * 201: Message sent successfully
+	 * 400: Sending message is not possible
+	 * 404: Actor not found
+	 * 413: Message too long
 	 */
 	#[PublicPage]
 	#[RequireModeratorOrNoLobby]
@@ -252,19 +231,22 @@ class ChatController extends AEnvironmentAwareController {
 	}
 
 	/**
-	 * Sends a rich-object to the given room.
+	 * Sends a rich-object to the given room
 	 *
 	 * The author and timestamp are automatically set to the current user/guest
 	 * and time.
 	 *
-	 * @param string $objectType
-	 * @param string $objectId
-	 * @param string $metaData
-	 * @param string $actorDisplayName
-	 * @param string $referenceId
-	 * @return DataResponse the status code is "201 Created" if successful, and
-	 *         "404 Not found" if the room or session for a guest user was not
-	 *         found".
+	 * @param string $objectType Type of the object
+	 * @param string $objectId ID of the object
+	 * @param string $metaData Additional metadata
+	 * @param string $actorDisplayName Guest name
+	 * @param string $referenceId Reference ID
+	 * @return DataResponse<Http::STATUS_CREATED, ?TalkChatMessageWithParent, array{X-Chat-Last-Common-Read?: numeric-string}>|DataResponse<Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_REQUEST_ENTITY_TOO_LARGE, array<empty>, array{}>
+	 *
+	 * 201: Object shared successfully
+	 * 400: Sharing object is not possible
+	 * 404: Actor not found
+	 * 413: Message too long
 	 */
 	#[PublicPage]
 	#[RequireModeratorOrNoLobby]
@@ -351,7 +333,7 @@ class ChatController extends AEnvironmentAwareController {
 	}
 
 	/**
-	 * Receives chat messages from the given room.
+	 * Receives chat messages from the given room
 	 *
 	 * - Receiving the history ($lookIntoFuture=0):
 	 *   The next $limit messages after $lastKnownMessageId will be returned.
@@ -391,12 +373,10 @@ class ChatController extends AEnvironmentAwareController {
 	 * @param int $includeLastKnown Include the $lastKnownMessageId in the messages when 1 (default 0)
 	 * @param int $noStatusUpdate When the user status should not be automatically set to online set to 1 (default 0)
 	 * @param int $markNotificationsAsRead Set to 0 when notifications should not be marked as read (default 1)
-	 * @return DataResponse an array of chat messages, "404 Not found" if the
-	 *         room token was not valid or "304 Not modified" if there were no messages;
-	 *         each chat message is an array with
-	 *         fields 'id', 'token', 'actorType', 'actorId',
-	 *         'actorDisplayName', 'timestamp' (in seconds and UTC timezone) and
-	 *         'message'.
+	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_NOT_MODIFIED, TalkChatMessageWithParent[], array{X-Chat-Last-Common-Read?: numeric-string, X-Chat-Last-Given?: string}>
+	 *
+	 * 200: Messages returned
+	 * 304: No messages
 	 */
 	#[PublicPage]
 	#[RequireModeratorOrNoLobby]
@@ -463,23 +443,26 @@ class ChatController extends AEnvironmentAwareController {
 			$comments = $this->chatManager->getHistory($this->room, $lastKnownMessageId, $limit, (bool)$includeLastKnown);
 		}
 
-		return $this->prepareCommentsAsDataResponse($comments);
+		return $this->prepareCommentsAsDataResponse($comments, $lastCommonReadId);
 	}
 
+	/**
+	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_NOT_MODIFIED, TalkChatMessageWithParent[], array{X-Chat-Last-Common-Read?: numeric-string, X-Chat-Last-Given?: string}>
+	 */
 	protected function prepareCommentsAsDataResponse(array $comments, int $lastCommonReadId = 0): DataResponse {
 		if (empty($comments)) {
-			$response = new DataResponse([], Http::STATUS_NOT_MODIFIED);
 			if ($lastCommonReadId && $this->participant->getAttendee()->getReadPrivacy() === Participant::PRIVACY_PUBLIC) {
 				$newLastCommonRead = $this->chatManager->getLastCommonReadMessage($this->room);
 				if ($lastCommonReadId !== $newLastCommonRead) {
 					// Set the status code to 200 so the header is sent to the client.
 					// As per "section 10.3.5 of RFC 2616" entity headers shall be
 					// stripped out on 304: https://stackoverflow.com/a/17822709
-					$response->setStatus(Http::STATUS_OK);
-					$response->addHeader('X-Chat-Last-Common-Read', (string) $newLastCommonRead);
+					/** @var array{X-Chat-Last-Common-Read?: numeric-string, X-Chat-Last-Given?: string} $headers */
+					$headers = ['X-Chat-Last-Common-Read' => (string) $newLastCommonRead];
+					return new DataResponse([], Http::STATUS_OK, $headers);
 				}
 			}
-			return $response;
+			return new DataResponse([], Http::STATUS_NOT_MODIFIED);
 		}
 
 		$this->preloadShares($comments);
@@ -571,34 +554,38 @@ class ChatController extends AEnvironmentAwareController {
 
 		$messages = $this->loadSelfReactions($messages, $commentIdToIndex);
 
-		$response = new DataResponse($messages, Http::STATUS_OK);
-
+		$headers = [];
 		$newLastKnown = end($comments);
 		if ($newLastKnown instanceof IComment) {
-			$response->addHeader('X-Chat-Last-Given', (string) $newLastKnown->getId());
-			/**
-			 * This falsely set the read marker on new messages, although you
-			 * navigated away to a different chat already. So we removed this
-			 * and instead update the read marker before your next waiting.
-			 * So when you are still there, it will just have a wrong read
-			 * marker for the time until your next request starts, while it will
-			 * not update the value, when you actually left the chat already.
-			 * if ($setReadMarker === 1 && $lookIntoFuture) {
-			 * $this->participantService->updateLastReadMessage($this->participant, (int) $newLastKnown->getId());
-			 * }
-			 */
+			$headers = ['X-Chat-Last-Given' => (string) $newLastKnown->getId()];
 			if ($this->participant->getAttendee()->getReadPrivacy() === Participant::PRIVACY_PUBLIC) {
-				$response->addHeader('X-Chat-Last-Common-Read', (string) $this->chatManager->getLastCommonReadMessage($this->room));
+				/**
+				 * This falsely set the read marker on new messages, although you
+				 * navigated away to a different chat already. So we removed this
+				 * and instead update the read marker before your next waiting.
+				 * So when you are still there, it will just have a wrong read
+				 * marker for the time until your next request starts, while it will
+				 * not update the value, when you actually left the chat already.
+				 * if ($setReadMarker === 1 && $lookIntoFuture) {
+				 * $this->participantService->updateLastReadMessage($this->participant, (int) $newLastKnown->getId());
+				 * }
+				 */
+				$headers['X-Chat-Last-Common-Read'] = (string)$this->chatManager->getLastCommonReadMessage($this->room);
 			}
 		}
 
-		return $response;
+		return new DataResponse($messages, Http::STATUS_OK, $headers);
 	}
 
 	/**
+	 * Get the context of a message
+	 *
 	 * @param int $messageId The focused message which should be in the "middle" of the returned context
 	 * @param int $limit Number of chat messages to receive in both directions (50 by default, 100 at most, might return 201 messages)
-	 * @return DataResponse
+	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_NOT_MODIFIED, TalkChatMessageWithParent[], array{X-Chat-Last-Common-Read?: numeric-string, X-Chat-Last-Given?: string}>
+	 *
+	 * 200: Message context returned
+	 * 304: No messages
 	 */
 	#[PublicPage]
 	#[RequireModeratorOrNoLobby]
@@ -660,6 +647,19 @@ class ChatController extends AEnvironmentAwareController {
 		return $messages;
 	}
 
+	/**
+	 * Delete a chat message
+	 *
+	 * @param int $messageId ID of the message
+	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_ACCEPTED, TalkChatMessageWithParent, array{X-Chat-Last-Common-Read?: numeric-string}>|DataResponse<Http::STATUS_BAD_REQUEST|Http::STATUS_FORBIDDEN|Http::STATUS_NOT_FOUND|Http::STATUS_METHOD_NOT_ALLOWED, array<empty>, array{}>
+	 *
+	 * 200: Message deleted successfully
+	 * 202: Message deleted successfully, but Matterbridge is configured, so the information can be replicated elsewhere
+	 * 400: Deleting message is not possible
+	 * 403: Missing permissions to delete message
+	 * 404: Message not found
+	 * 405: Deleting message is not allowed
+	 */
 	#[NoAdminRequired]
 	#[RequireModeratorOrNoLobby]
 	#[RequireParticipant]
@@ -721,13 +721,112 @@ class ChatController extends AEnvironmentAwareController {
 
 		$bridge = $this->matterbridgeManager->getBridgeOfRoom($this->room);
 
-		$response = new DataResponse($data, $bridge['enabled'] ? Http::STATUS_ACCEPTED : Http::STATUS_OK);
+		$headers = [];
 		if ($this->participant->getAttendee()->getReadPrivacy() === Participant::PRIVACY_PUBLIC) {
-			$response->addHeader('X-Chat-Last-Common-Read', (string) $this->chatManager->getLastCommonReadMessage($this->room));
+			$headers = ['X-Chat-Last-Common-Read' => (string) $this->chatManager->getLastCommonReadMessage($this->room)];
 		}
-		return $response;
+		return new DataResponse($data, $bridge['enabled'] ? Http::STATUS_ACCEPTED : Http::STATUS_OK, $headers);
 	}
 
+	/**
+	 * Set a reminder for a chat message
+	 *
+	 * @param int $messageId ID of the message
+	 * @param int $timestamp Timestamp of the reminder
+	 * @return DataResponse<Http::STATUS_CREATED, TalkChatReminder, array{}>|DataResponse<Http::STATUS_NOT_FOUND, array<empty>, array{}>
+	 *
+	 * 201: Reminder created successfully
+	 * 404: Message not found
+	 */
+	#[NoAdminRequired]
+	#[RequireModeratorOrNoLobby]
+	#[RequireLoggedInParticipant]
+	#[UserRateLimit(limit: 60, period: 3600)]
+	public function setReminder(int $messageId, int $timestamp): DataResponse {
+		try {
+			$this->chatManager->getComment($this->room, (string) $messageId);
+		} catch (NotFoundException) {
+			return new DataResponse([], Http::STATUS_NOT_FOUND);
+		}
+
+		$reminder = $this->reminderService->setReminder(
+			$this->participant->getAttendee()->getActorId(),
+			$this->room->getToken(),
+			$messageId,
+			$timestamp
+		);
+
+		return new DataResponse($reminder->jsonSerialize(), Http::STATUS_CREATED);
+	}
+
+	/**
+	 * Get the reminder for a chat message
+	 *
+	 * @param int $messageId ID of the message
+	 * @return DataResponse<Http::STATUS_OK, TalkChatReminder, array{}>|DataResponse<Http::STATUS_NOT_FOUND, array<empty>, array{}>
+	 *
+	 * 200: Reminder returned
+	 * 404: No reminder found
+	 * 404: Message not found
+	 */
+	#[NoAdminRequired]
+	#[RequireModeratorOrNoLobby]
+	#[RequireLoggedInParticipant]
+	public function getReminder(int $messageId): DataResponse {
+		try {
+			$this->chatManager->getComment($this->room, (string) $messageId);
+		} catch (NotFoundException) {
+			return new DataResponse([], Http::STATUS_NOT_FOUND);
+		}
+
+		try {
+			$reminder = $this->reminderService->getReminder(
+				$this->participant->getAttendee()->getActorId(),
+				$messageId,
+			);
+			return new DataResponse($reminder->jsonSerialize(), Http::STATUS_OK);
+		} catch (DoesNotExistException) {
+			return new DataResponse([], Http::STATUS_NOT_FOUND);
+		}
+	}
+
+	/**
+	 * Delete a chat reminder
+	 *
+	 * @param int $messageId ID of the message
+	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_NOT_FOUND, array<empty>, array{}>
+	 *
+	 * 200: Reminder deleted successfully
+	 * 404: Message not found
+	 */
+	#[NoAdminRequired]
+	#[RequireModeratorOrNoLobby]
+	#[RequireLoggedInParticipant]
+	public function deleteReminder(int $messageId): DataResponse {
+		try {
+			$this->chatManager->getComment($this->room, (string) $messageId);
+		} catch (NotFoundException) {
+			return new DataResponse([], Http::STATUS_NOT_FOUND);
+		}
+
+		$this->reminderService->deleteReminder(
+			$this->participant->getAttendee()->getActorId(),
+			$this->room->getToken(),
+			$messageId,
+		);
+
+		return new DataResponse([], Http::STATUS_OK);
+	}
+
+	/**
+	 * Clear the chat history
+	 *
+	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_ACCEPTED, TalkChatMessage, array{X-Chat-Last-Common-Read?: numeric-string}>|DataResponse<Http::STATUS_FORBIDDEN, array<empty>, array{}>
+	 *
+	 * 200: History cleared successfully
+	 * 202: History cleared successfully, but Matterbridge is configured, so the information can be replicated elsewhere
+	 * 403: Missing permissions to clear history
+	 */
 	#[NoAdminRequired]
 	#[RequireModeratorParticipant]
 	#[RequireReadWriteConversation]
@@ -754,24 +853,39 @@ class ChatController extends AEnvironmentAwareController {
 
 		$bridge = $this->matterbridgeManager->getBridgeOfRoom($this->room);
 
-		$response = new DataResponse($data, $bridge['enabled'] ? Http::STATUS_ACCEPTED : Http::STATUS_OK);
+		$headers = [];
 		if ($this->participant->getAttendee()->getReadPrivacy() === Participant::PRIVACY_PUBLIC) {
-			$response->addHeader('X-Chat-Last-Common-Read', (string) $this->chatManager->getLastCommonReadMessage($this->room));
+			$headers = ['X-Chat-Last-Common-Read' => (string) $this->chatManager->getLastCommonReadMessage($this->room)];
 		}
-		return $response;
+		return new DataResponse($data, $bridge['enabled'] ? Http::STATUS_ACCEPTED : Http::STATUS_OK, $headers);
 	}
 
+	/**
+	 * Set the read marker to a specific message
+	 *
+	 * @param int $lastReadMessage ID if the last read message
+	 * @return DataResponse<Http::STATUS_OK, array<empty>, array{X-Chat-Last-Common-Read?: numeric-string}>
+	 *
+	 * 200: Read marker set successfully
+	 */
 	#[NoAdminRequired]
 	#[RequireParticipant]
 	public function setReadMarker(int $lastReadMessage): DataResponse {
 		$this->participantService->updateLastReadMessage($this->participant, $lastReadMessage);
-		$response = new DataResponse();
+		$headers = [];
 		if ($this->participant->getAttendee()->getReadPrivacy() === Participant::PRIVACY_PUBLIC) {
-			$response->addHeader('X-Chat-Last-Common-Read', (string) $this->chatManager->getLastCommonReadMessage($this->room));
+			$headers = ['X-Chat-Last-Common-Read' => (string) $this->chatManager->getLastCommonReadMessage($this->room)];
 		}
-		return $response;
+		return new DataResponse([], Http::STATUS_OK, $headers);
 	}
 
+	/**
+	 * Mark a chat as unread
+	 *
+	 * @return DataResponse<Http::STATUS_OK, array<empty>, array{X-Chat-Last-Common-Read?: numeric-string}>
+	 *
+	 * 200: Read marker set successfully
+	 */
 	#[NoAdminRequired]
 	#[RequireParticipant]
 	public function markUnread(): DataResponse {
@@ -796,6 +910,14 @@ class ChatController extends AEnvironmentAwareController {
 		return $this->setReadMarker($unreadId);
 	}
 
+	/**
+	 * Get objects that are shared in the room overview
+	 *
+	 * @param int $limit Maximum number of objects
+	 * @return DataResponse<Http::STATUS_OK, array<string, TalkChatMessage[]>, array{}>
+	 *
+	 * 200: List of shared objects messages of each type returned
+	 */
 	#[PublicPage]
 	#[RequireModeratorOrNoLobby]
 	#[RequireParticipant]
@@ -839,6 +961,16 @@ class ChatController extends AEnvironmentAwareController {
 		return new DataResponse($messagesByType, Http::STATUS_OK);
 	}
 
+	/**
+	 * Get objects that are shared in the room
+	 *
+	 * @param string $objectType Type of the objects
+	 * @param int $lastKnownMessageId ID of the last known message
+	 * @param int $limit Maximum number of objects
+	 * @return DataResponse<Http::STATUS_OK, TalkChatMessage[], array{X-Chat-Last-Given?: string}>
+	 *
+	 * 200: List of shared objects messages returned
+	 */
 	#[PublicPage]
 	#[RequireModeratorOrNoLobby]
 	#[RequireParticipant]
@@ -851,18 +983,19 @@ class ChatController extends AEnvironmentAwareController {
 
 		$messages = $this->getMessagesForRoom($messageIds);
 
-		$response = new DataResponse($messages, Http::STATUS_OK);
-
 		if (!empty($messages)) {
 			$newLastKnown = min(array_keys($messages));
-			$response->addHeader('X-Chat-Last-Given', $newLastKnown);
+			return new DataResponse($messages, Http::STATUS_OK, ['X-Chat-Last-Given' => $newLastKnown]);
 		}
 
-		return $response;
+		return new DataResponse($messages, Http::STATUS_OK);
 	}
 
+	/**
+	 * @return TalkChatMessage[]
+	 */
 	protected function getMessagesForRoom(array $messageIds): array {
-		$comments = $this->chatManager->getMessagesById($this->room, $messageIds);
+		$comments = $this->chatManager->getMessagesForRoomById($this->room, $messageIds);
 		$this->preloadShares($comments);
 
 		$messages = [];
@@ -888,6 +1021,16 @@ class ChatController extends AEnvironmentAwareController {
 		return $messages;
 	}
 
+	/**
+	 * Search for mentions
+	 *
+	 * @param string $search Text to search for
+	 * @param int $limit Maximum number of results
+	 * @param bool $includeStatus Include the user statuses
+	 * @return DataResponse<Http::STATUS_OK, TalkChatMentionSuggestion[], array{}>
+	 *
+	 * 200: List of mention suggestions returned
+	 */
 	#[PublicPage]
 	#[RequireModeratorOrNoLobby]
 	#[RequireParticipant]
@@ -935,7 +1078,7 @@ class ChatController extends AEnvironmentAwareController {
 	/**
 	 * @param array $results
 	 * @param IUserStatus[] $statuses
-	 * @return array
+	 * @return TalkChatMentionSuggestion[]
 	 */
 	protected function prepareResultArray(array $results, array $statuses): array {
 		$output = [];

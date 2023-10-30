@@ -20,25 +20,24 @@
 -->
 
 <template>
-	<form @submit.prevent="handleSubmit">
-		<NcTextField ref="searchConversations"
-			:value.sync="localValue"
-			:label="placeholderText"
-			:show-trailing-button="isSearching"
-			trailing-button-icon="close"
-			@trailing-button-click="abortSearch"
-			@keypress.enter="handleSubmit">
-			<Magnify :size="16" />
-		</NcTextField>
-	</form>
+	<NcTextField ref="searchConversations"
+		:value="value"
+		:label="placeholderText"
+		:show-trailing-button="isFocused"
+		class="search-box"
+		trailing-button-icon="close"
+		v-on="listeners"
+		@update:value="updateValue"
+		@trailing-button-click="abortSearch"
+		@keydown.esc="abortSearch">
+		<Magnify :size="16" />
+	</NcTextField>
 </template>
 
 <script>
 import Magnify from 'vue-material-design-icons/Magnify.vue'
 
 import NcTextField from '@nextcloud/vue/dist/Components/NcTextField.js'
-
-import { EventBus } from '../../../services/EventBus.js'
 
 export default {
 	name: 'SearchBox',
@@ -52,11 +51,10 @@ export default {
 		 */
 		placeholderText: {
 			type: String,
-			default: t('spreed', 'Search conversations or users'),
+			default: t('spreed', 'Search …'),
 		},
 		/**
-		 * The value of the input field, when receiving it as a prop the localValue
-		 * is updated.
+		 * The value of the input field.
 		 */
 		value: {
 			type: String,
@@ -65,76 +63,118 @@ export default {
 		/**
 		 * If true, this component displays an 'x' button to abort the search
 		 */
-		isSearching: {
+		isFocused: {
 			type: Boolean,
-			default: false,
+			required: true,
+		},
+		/**
+		 * Conversations list reference for handling click trigger
+		 */
+		 list: {
+			type: HTMLElement,
+			default: null,
 		},
 	},
 
-	emits: ['update:value', 'input', 'submit', 'abort-search'],
+	expose: ['focus'],
 
-	data() {
-		return {
-			localValue: '',
-		}
-	},
+	emits: ['update:value', 'update:is-focused', 'input', 'abort-search', 'blur', 'focus'],
+
 	computed: {
+		listeners() {
+			return Object.assign({}, this.$listeners, {
+				focus: this.handleFocus,
+				blur: this.handleBlur,
+			})
+		},
+
 		cancelSearchLabel() {
 			return t('spreed', 'Cancel search')
 		},
 	},
+
 	watch: {
-		localValue(localValue) {
-			this.$emit('update:value', localValue)
-			this.$emit('input', localValue)
-		},
-		value(value) {
-			this.localValue = value
-		},
-	},
-	mounted() {
-		this.focusInputIfRoot()
-		/**
-		 * Listen to routeChange global events and focus on the input
-		 */
-		EventBus.$on('route-change', this.focusInputIfRoot)
-	},
-	beforeDestroy() {
-		EventBus.$off('route-change', this.focusInputIfRoot)
-	},
-	methods: {
-		// Focus the input field of the searchbox component.
-		focusInput() {
-			this.$refs.searchConversations.$el.focus()
-		},
-		// Focuses the input if the current route is root.
-		focusInputIfRoot() {
-			if (this.$route.name === 'root') {
-				this.focusInput()
+		isFocused(value) {
+			if (value) {
+				this.$nextTick(() => {
+					this.getTrailingButton()?.addEventListener('keydown', this.handleTrailingKeyDown)
+				})
+			} else {
+				this.getTrailingButton()?.removeEventListener('keydown', this.handleTrailingKeyDown)
 			}
 		},
-		/**
-		 * When the form is submitted we send this event up in order to allow for example
-		 * to select the first search result and trigger a route change in the main view.
-		 */
-		handleSubmit() {
-			this.$emit('submit')
+	},
+
+	methods: {
+		updateValue(value) {
+			this.$emit('update:value', value)
+			this.$emit('input', value)
 		},
+		// Focuses the input.
+		focus() {
+			this.$refs.searchConversations.focus()
+		},
+
+		getTrailingButton() {
+			return this.$refs.searchConversations.$el.querySelector('.input-field__clear-button')
+		},
+
+		handleTrailingKeyDown(event) {
+			if (event.key === 'Enter') {
+				event.stopPropagation()
+				this.abortSearch()
+			}
+		},
+
 		/**
-		 * Emits the abort-search event and re-focuses the input
+		 * Emits the abort-search event and blurs the input
 		 */
 		abortSearch() {
+			this.updateValue('')
+			this.$emit('update:is-focused', false)
 			this.$emit('abort-search')
-			this.focusInput()
+
+			document.activeElement.blur()
 		},
+
+		handleFocus(event) {
+			this.$emit('update:is-focused', true)
+			this.$emit('focus', event)
+		},
+
+		handleBlur(event) {
+			// Blur triggered by clicking on the trailing button
+			if (event.relatedTarget?.classList.contains('input-field__clear-button')) {
+				event.preventDefault()
+				this.getTrailingButton()?.addEventListener('blur', (trailingEvent) => {
+					this.handleBlur(trailingEvent)
+				})
+				return
+			}
+			// Blur triggered by clicking on a conversation item
+			if (this.list?.contains(event.relatedTarget)) {
+				return
+			}
+			 // Blur in other cases
+			this.$emit('blur', event)
+			if (this.value === '') {
+				this.$emit('update:is-focused', false)
+			}
+		},
+
 	},
 }
 </script>
 
 <style lang="scss" scoped>
+.search-box {
+	:deep(.input-field__input) {
+		border-radius: var(--border-radius-pill);
+	}
 
-:deep(.input-field__input) {
-	border-radius: var(--border-radius-pill);
+  :deep(.input-field__clear-button) {
+    border-radius: var(--border-radius-pill) !important;
+  }
 }
 
 </style>

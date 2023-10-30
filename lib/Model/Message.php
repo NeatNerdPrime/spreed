@@ -4,6 +4,8 @@ declare(strict_types=1);
 /**
  * @copyright Copyright (c) 2019 Joas Schilling <coding@schilljs.com>
  *
+ * @author Kate Döen <kate.doeen@nextcloud.com>
+ *
  * @license GNU AGPL version 3 or any later version
  *
  * This program is free software: you can redistribute it and/or modify
@@ -25,22 +27,15 @@ namespace OCA\Talk\Model;
 
 use OCA\Talk\Chat\ChatManager;
 use OCA\Talk\Participant;
+use OCA\Talk\ResponseDefinitions;
 use OCA\Talk\Room;
 use OCP\Comments\IComment;
 use OCP\IL10N;
 
+/**
+ * @psalm-import-type TalkChatMessage from ResponseDefinitions
+ */
 class Message {
-	/** @var Room */
-	protected $room;
-
-	/** @var IComment */
-	protected $comment;
-
-	/** @var IL10N */
-	protected $l;
-
-	/** @var Participant */
-	protected $participant;
 
 	/** @var bool */
 	protected $visible = true;
@@ -66,14 +61,12 @@ class Message {
 	/** @var string */
 	protected $actorDisplayName = '';
 
-	public function __construct(Room $room,
-		Participant $participant,
-		IComment $comment,
-		IL10N $l) {
-		$this->room = $room;
-		$this->participant = $participant;
-		$this->comment = $comment;
-		$this->l = $l;
+	public function __construct(
+		protected Room $room,
+		protected ?Participant $participant,
+		protected IComment $comment,
+		protected IL10N $l,
+	) {
 	}
 
 	/*
@@ -92,7 +85,7 @@ class Message {
 		return $this->l;
 	}
 
-	public function getParticipant(): Participant {
+	public function getParticipant(): ?Participant {
 		return $this->participant;
 	}
 
@@ -161,13 +154,13 @@ class Message {
 			$this->getMessageType() !== ChatManager::VERB_MESSAGE_DELETED &&
 			$this->getMessageType() !== ChatManager::VERB_REACTION &&
 			$this->getMessageType() !== ChatManager::VERB_REACTION_DELETED &&
-			\in_array($this->getActorType(), [Attendee::ACTOR_USERS, Attendee::ACTOR_GUESTS]);
+			\in_array($this->getActorType(), [Attendee::ACTOR_USERS, Attendee::ACTOR_GUESTS, Attendee::ACTOR_BOTS]);
 	}
 
 	/**
 	 * @param string $format
 	 * @psalm-param 'json'|'xml' $format
-	 * @return array
+	 * @return TalkChatMessage
 	 */
 	public function toArray(string $format): array {
 		$expireDate = $this->getComment()->getExpireDate();
@@ -194,6 +187,7 @@ class Message {
 			'referenceId' => (string) $this->getComment()->getReferenceId(),
 			'reactions' => $reactions,
 			'expirationTimestamp' => $expireDate ? $expireDate->getTimestamp() : 0,
+			'markdown' => $this->getMessageType() === ChatManager::VERB_SYSTEM ? false : true,
 		];
 
 		if ($this->getMessageType() === ChatManager::VERB_MESSAGE_DELETED) {

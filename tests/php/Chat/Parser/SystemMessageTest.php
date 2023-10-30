@@ -143,7 +143,7 @@ class SystemMessageTest extends TestCase {
 		);
 	}
 
-	public function dataParseMessage(): array {
+	public static function dataParseMessage(): array {
 		return [
 			['conversation_created', [], 'recipient',
 				'{actor} created the conversation',
@@ -267,6 +267,14 @@ class SystemMessageTest extends TestCase {
 				'You removed {user}',
 				['actor' => ['id' => 'actor', 'type' => 'user'], 'user' => ['id' => 'user', 'type' => 'user']],
 			],
+			['user_added', ['user' => 'user'], null,
+				'{actor} added {user}',
+				['actor' => ['id' => 'actor', 'type' => 'user'], 'user' => ['id' => 'user', 'type' => 'user']],
+			],
+			['user_removed', ['user' => 'user'], null,
+				'{actor} removed {user}',
+				['actor' => ['id' => 'actor', 'type' => 'user'], 'user' => ['id' => 'user', 'type' => 'user']],
+			],
 			['group_added', ['group' => 'g1'], 'recipient',
 				'{actor} added group {group}',
 				['actor' => ['id' => 'actor', 'type' => 'user'], 'group' => ['id' => 'g1', 'type' => 'group']],
@@ -339,6 +347,22 @@ class SystemMessageTest extends TestCase {
 				'You demoted {user} from moderator',
 				['actor' => ['id' => 'actor', 'type' => 'user'], 'user' => ['id' => 'moderator', 'type' => 'guest']],
 			],
+			['moderator_promoted', ['user' => 'user'], null,
+				'{actor} promoted {user} to moderator',
+				['actor' => ['id' => 'actor', 'type' => 'user'], 'user' => ['id' => 'user', 'type' => 'user']],
+			],
+			['moderator_demoted', ['user' => 'user'], null,
+				'{actor} demoted {user} from moderator',
+				['actor' => ['id' => 'actor', 'type' => 'user'], 'user' => ['id' => 'user', 'type' => 'user']],
+			],
+			['guest_moderator_promoted', ['session' => 'moderator'], null,
+				'{actor} promoted {user} to moderator',
+				['actor' => ['id' => 'actor', 'type' => 'user'], 'user' => ['id' => 'moderator', 'type' => 'guest']],
+			],
+			['guest_moderator_demoted', ['session' => 'moderator'], null,
+				'{actor} demoted {user} from moderator',
+				['actor' => ['id' => 'actor', 'type' => 'user'], 'user' => ['id' => 'moderator', 'type' => 'guest']],
+			],
 			['file_shared', ['share' => '42'], 'recipient',
 				'{file}',
 				['actor' => ['id' => 'actor', 'type' => 'user'], 'file' => ['id' => 'file-from-share']],
@@ -388,11 +412,11 @@ class SystemMessageTest extends TestCase {
 				['actor' => ['id' => 'actor', 'type' => 'user']],
 			],
 			['listable_all', [], 'recipient',
-				'{actor} opened the conversation to registered and guest app users',
+				'{actor} opened the conversation to registered users and users created with the Guests app',
 				['actor' => ['id' => 'actor', 'type' => 'user']],
 			],
 			['listable_all', [], 'actor',
-				'You opened the conversation to registered and guest app users',
+				'You opened the conversation to registered users and users created with the Guests app',
 				['actor' => ['id' => 'actor', 'type' => 'user']],
 			],
 			['object_shared', ['metaData' => ['id' => 'geo:52.5450511,13.3741463', 'type' => 'geo-location', 'name' => 'Nextcloud Berlin Office']], 'actor',
@@ -430,14 +454,16 @@ class SystemMessageTest extends TestCase {
 	 * @dataProvider dataParseMessage
 	 * @param string $message
 	 * @param array $parameters
-	 * @param $recipientId
+	 * @param string|null $recipientId
 	 * @param string $expectedMessage
 	 * @param array $expectedParameters
 	 */
-	public function testParseMessage(string $message, array $parameters, $recipientId, string $expectedMessage, array $expectedParameters) {
+	public function testParseMessage(string $message, array $parameters, ?string $recipientId, string $expectedMessage, array $expectedParameters) {
 		/** @var Participant|MockObject $participant */
 		$participant = $this->createMock(Participant::class);
-		if ($recipientId && strpos($recipientId, 'guest::') !== false) {
+		if ($recipientId === null) {
+			$participant = null;
+		} elseif ($recipientId && strpos($recipientId, 'guest::') !== false) {
 			$attendee = Attendee::fromRow([
 				'actor_type' => 'guests',
 				'actor_id' => substr($recipientId, strlen('guest::')),
@@ -448,6 +474,12 @@ class SystemMessageTest extends TestCase {
 			$participant->expects($this->atLeastOnce())
 				->method('isGuest')
 				->willReturn(true);
+			$participant->expects($this->any())
+				->method('getAttendee')
+				->willReturn($attendee);
+			$participant->expects($this->any())
+				->method('getSession')
+				->willReturn($session);
 		} else {
 			$participant->expects($this->atLeastOnce())
 				->method('isGuest')
@@ -457,13 +489,13 @@ class SystemMessageTest extends TestCase {
 				'actor_id' => $recipientId,
 			]);
 			$session = null;
+			$participant->expects($this->any())
+				->method('getAttendee')
+				->willReturn($attendee);
+			$participant->expects($this->any())
+				->method('getSession')
+				->willReturn($session);
 		}
-		$participant->expects($this->any())
-			->method('getAttendee')
-			->willReturn($attendee);
-		$participant->expects($this->any())
-			->method('getSession')
-			->willReturn($session);
 
 		/** @var IComment|MockObject $comment */
 		$comment = $this->createMock(IComment::class);
@@ -543,7 +575,7 @@ class SystemMessageTest extends TestCase {
 		}
 	}
 
-	public function dataParseMessageThrows(): array {
+	public static function dataParseMessageThrows(): array {
 		return [
 			['not json'],
 			[json_encode('not a json array')],
@@ -857,7 +889,7 @@ class SystemMessageTest extends TestCase {
 		self::invokePrivate($parser, 'getFileFromShare', [$participant, '23']);
 	}
 
-	public function dataGetActor(): array {
+	public static function dataGetActor(): array {
 		return [
 			['users', [], ['user'], ['user']],
 			['guests', ['guest'], [], ['guest']],
@@ -907,7 +939,7 @@ class SystemMessageTest extends TestCase {
 		$this->assertSame($expected, self::invokePrivate($parser, 'getActorFromComment', [$room, $chatMessage]));
 	}
 
-	public function dataGetUser(): array {
+	public static function dataGetUser(): array {
 		return [
 			['test', [], false, 'Test'],
 			['foo', ['admin' => 'Admin'], false, 'Bar'],
@@ -943,7 +975,7 @@ class SystemMessageTest extends TestCase {
 		$this->assertSame($name, $result['name']);
 	}
 
-	public function dataGetDisplayName(): array {
+	public static function dataGetDisplayName(): array {
 		return [
 			['test', true, 'Test'],
 			['foo', false, 'foo'],
@@ -975,7 +1007,7 @@ class SystemMessageTest extends TestCase {
 		$this->assertSame($name, self::invokePrivate($parser, 'getDisplayName', [$uid]));
 	}
 
-	public function dataGetGroup(): array {
+	public static function dataGetGroup(): array {
 		return [
 			['test', [], false, 'Test'],
 			['foo', ['admin' => 'Admin'], false, 'Bar'],
@@ -1011,7 +1043,7 @@ class SystemMessageTest extends TestCase {
 		self::assertSame($name, $result['name']);
 	}
 
-	public function dataGetDisplayNameGroup(): array {
+	public static function dataGetDisplayNameGroup(): array {
 		return [
 			['test', true, 'Test'],
 			['foo', false, 'foo'],
@@ -1046,7 +1078,7 @@ class SystemMessageTest extends TestCase {
 		self::assertSame($name, self::invokePrivate($parser, 'getDisplayNameGroup', [$gid]));
 	}
 
-	public function dataGetGuest(): array {
+	public static function dataGetGuest(): array {
 		return [
 			[Attendee::ACTOR_GUESTS, sha1('name')],
 			[Attendee::ACTOR_EMAILS, 'test@test.tld'],
@@ -1082,7 +1114,7 @@ class SystemMessageTest extends TestCase {
 		], self::invokePrivate($parser, 'getGuest', [$room, $attendeeType, $actorId]));
 	}
 
-	public function dataGetGuestName(): array {
+	public static function dataGetGuestName(): array {
 		return [
 			[Attendee::ACTOR_GUESTS, sha1('name'), 'name', 'name (guest)'],
 			[Attendee::ACTOR_GUESTS, sha1('name'), '', 'Guest'],
@@ -1135,7 +1167,7 @@ class SystemMessageTest extends TestCase {
 		$this->assertSame('Guest', self::invokePrivate($parser, 'getGuestName', [$room, Attendee::ACTOR_GUESTS, $actorId]));
 	}
 
-	public function dataParseCall(): array {
+	public static function dataParseCall(): array {
 		return [
 			'1 user + guests' => [
 				'call_ended',
@@ -1391,7 +1423,7 @@ class SystemMessageTest extends TestCase {
 		$this->assertEquals($expected, self::invokePrivate($parser, 'parseCall', [$message, $parameters, ['actor' => $actor]]));
 	}
 
-	public function dataGetDuration(): array {
+	public static function dataGetDuration(): array {
 		return [
 			[30, '0:30'],
 			[140, '2:20'],

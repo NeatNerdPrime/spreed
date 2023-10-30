@@ -21,6 +21,8 @@
  *
  */
 
+import * as wasmCheck from 'wasm-check'
+
 import { VIRTUAL_BACKGROUND } from '../../../constants.js'
 import JitsiStreamBackgroundEffect from '../effects/virtual-background/JitsiStreamBackgroundEffect.js'
 import TrackSinkSource from './TrackSinkSource.js'
@@ -72,20 +74,17 @@ export default class VirtualBackground extends TrackSinkSource {
 	}
 
 	static _checkWasmSupport() {
-		try {
-			const wasmCheck = require('wasm-check')
-			this._wasmSupported = true
-
-			if (wasmCheck?.feature?.simd) {
-				this._wasmSimd = true
-			} else {
-				this._wasmSimd = false
-			}
-		} catch (error) {
+		if (!wasmCheck.support()) {
 			this._wasmSupported = false
 
 			console.error('Looks like WebAssembly is disabled or not supported on this browser, virtual background will not be available')
+
+			return
 		}
+
+		this._wasmSupported = true
+
+		this._wasmSimd = wasmCheck.feature.simd
 	}
 
 	static isWasmSupported() {
@@ -293,16 +292,34 @@ export default class VirtualBackground extends TrackSinkSource {
 		this._outputStream = null
 	}
 
+	/**
+	 * Gets the virtual background properties.
+	 *
+	 * @return {object|undefined} undefined if WebAssembly is not supported, an object
+	 *         with the virtual background properties otherwise.
+	 */
 	getVirtualBackground() {
+		if (!this.isAvailable()) {
+			return undefined
+		}
+
 		return this._jitsiStreamBackgroundEffect.getVirtualBackground()
 	}
 
 	/**
+	 * Sets the virtual background properties.
+	 *
+	 * Nothing is set if the virtual background is not available.
+	 *
 	 * @param {object} virtualBackground the virtual background properties; see
 	 *        JitsiStreamBackgroundEffect.setVirtualBackground().
 	 */
 	setVirtualBackground(virtualBackground) {
-		return this._jitsiStreamBackgroundEffect.setVirtualBackground(virtualBackground)
+		if (!this.isAvailable()) {
+			return
+		}
+
+		this._jitsiStreamBackgroundEffect.setVirtualBackground(virtualBackground)
 	}
 
 }

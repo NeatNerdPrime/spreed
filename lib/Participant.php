@@ -55,18 +55,11 @@ class Participant {
 	public const PRIVACY_PUBLIC = 0;
 	public const PRIVACY_PRIVATE = 1;
 
-	protected Room $room;
-	protected Attendee $attendee;
-	protected ?Session $session;
-
 	public function __construct(
-		Room $room,
-		Attendee $attendee,
-		?Session $session,
+		protected Room $room,
+		protected Attendee $attendee,
+		protected ?Session $session,
 	) {
-		$this->room = $room;
-		$this->attendee = $attendee;
-		$this->session = $session;
 	}
 
 	public function getRoom(): Room {
@@ -100,6 +93,10 @@ class Participant {
 	}
 
 	public function canStartCall(IConfig $config): bool {
+		if ($this->room->getType() === Room::TYPE_NOTE_TO_SELF) {
+			return false;
+		}
+
 		$defaultStartCall = (int) $config->getAppValue('spreed', 'start_calls', (string) Room::START_CALL_EVERYONE);
 
 		if ($defaultStartCall === Room::START_CALL_NOONE) {

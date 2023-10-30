@@ -26,18 +26,17 @@ namespace OCA\Talk\Events;
 use OCA\Talk\Participant;
 use OCA\Talk\Room;
 
+/**
+ * @deprecated
+ */
 class SendCallNotificationEvent extends RoomEvent {
-	protected Participant $actor;
-	protected Participant $target;
 
 	public function __construct(
 		Room $room,
-		Participant $actor,
-		Participant $target,
+		protected Participant $actor,
+		protected Participant $target,
 	) {
 		parent::__construct($room);
-		$this->actor = $actor;
-		$this->target = $target;
 	}
 
 	public function getActor(): Participant {

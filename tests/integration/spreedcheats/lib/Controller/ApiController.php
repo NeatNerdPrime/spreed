@@ -56,6 +56,12 @@ class ApiController extends OCSController {
 		$delete->delete('talk_attendees')->executeStatement();
 
 		$delete = $this->db->getQueryBuilder();
+		$delete->delete('talk_bots_conversation')->executeStatement();
+
+		$delete = $this->db->getQueryBuilder();
+		$delete->delete('talk_bots_server')->executeStatement();
+
+		$delete = $this->db->getQueryBuilder();
 		$delete->delete('talk_bridges')->executeStatement();
 
 		$delete = $this->db->getQueryBuilder();
@@ -65,13 +71,13 @@ class ApiController extends OCSController {
 			->executeStatement();
 
 		$delete = $this->db->getQueryBuilder();
+		$delete->delete('talk_consent')->executeStatement();
+
+		$delete = $this->db->getQueryBuilder();
 		$delete->delete('talk_internalsignaling')->executeStatement();
 
 		$delete = $this->db->getQueryBuilder();
 		$delete->delete('talk_invitations')->executeStatement();
-
-		$delete = $this->db->getQueryBuilder();
-		$delete->delete('talk_rooms')->executeStatement();
 
 		$delete = $this->db->getQueryBuilder();
 		$delete->delete('talk_polls')->executeStatement();
@@ -80,7 +86,14 @@ class ApiController extends OCSController {
 		$delete->delete('talk_poll_votes')->executeStatement();
 
 		$delete = $this->db->getQueryBuilder();
+		$delete->delete('talk_reminders')->executeStatement();
+
+		$delete = $this->db->getQueryBuilder();
+		$delete->delete('talk_rooms')->executeStatement();
+
+		$delete = $this->db->getQueryBuilder();
 		$delete->delete('talk_sessions')->executeStatement();
+
 
 		$delete = $this->db->getQueryBuilder();
 		$delete->delete('share')

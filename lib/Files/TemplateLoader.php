@@ -31,12 +31,12 @@ use OCA\Talk\TInitialState;
 use OCP\App\IAppManager;
 use OCP\AppFramework\Services\IInitialState;
 use OCP\EventDispatcher\Event;
-use OCP\EventDispatcher\IEventDispatcher;
 use OCP\EventDispatcher\IEventListener;
 use OCP\Files\IRootFolder;
 use OCP\ICacheFactory;
 use OCP\IConfig;
 use OCP\IGroupManager;
+use OCP\IRequest;
 use OCP\IUser;
 use OCP\IUserSession;
 use OCP\Util;
@@ -49,33 +49,22 @@ use OCP\Util;
 class TemplateLoader implements IEventListener {
 	use TInitialState;
 
-	private IAppManager $appManager;
-	private IRootFolder $rootFolder;
-	private IUserSession $userSession;
-
 	public function __construct(
 		IInitialState $initialState,
 		ICacheFactory $memcacheFactory,
 		Config $talkConfig,
 		IConfig $serverConfig,
-		IAppManager $appManager,
-		IRootFolder $rootFolder,
-		IUserSession $userSession,
+		private IAppManager $appManager,
+		private IRootFolder $rootFolder,
+		private IUserSession $userSession,
 		IGroupManager $groupManager,
+		protected IRequest $request,
 	) {
 		$this->initialState = $initialState;
 		$this->memcacheFactory = $memcacheFactory;
 		$this->talkConfig = $talkConfig;
 		$this->serverConfig = $serverConfig;
-		$this->appManager = $appManager;
-		$this->rootFolder = $rootFolder;
-		$this->userSession = $userSession;
 		$this->groupManager = $groupManager;
-	}
-
-
-	public static function register(IEventDispatcher $dispatcher): void {
-		$dispatcher->addServiceListener(LoadSidebar::class, self::class);
 	}
 
 	/**
@@ -101,7 +90,7 @@ class TemplateLoader implements IEventListener {
 		}
 
 		Util::addStyle(Application::APP_ID, 'icons');
-		if (strpos(\OC::$server->getRequest()->getPathInfo(), '/apps/maps') !== 0) {
+		if (!str_starts_with($this->request->getPathInfo(), '/apps/maps')) {
 			Util::addScript(Application::APP_ID, 'talk-files-sidebar');
 		}
 

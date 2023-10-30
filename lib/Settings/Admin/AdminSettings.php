@@ -44,39 +44,21 @@ use OCP\Settings\ISettings;
 use OCP\Util;
 
 class AdminSettings implements ISettings {
-	private Config $talkConfig;
-	private IConfig $serverConfig;
-	private CommandService $commandService;
-	private IInitialState $initialState;
-	private ICacheFactory $memcacheFactory;
-	private IGroupManager $groupManager;
-	private MatterbridgeManager $bridgeManager;
 	private ?IUser $currentUser = null;
-	private IL10N $l10n;
-	private IFactory $l10nFactory;
 
 	public function __construct(
-		Config $talkConfig,
-		IConfig $serverConfig,
-		CommandService $commandService,
-		IInitialState $initialState,
-		ICacheFactory $memcacheFactory,
-		IGroupManager $groupManager,
-		MatterbridgeManager $bridgeManager,
+		private Config $talkConfig,
+		private IConfig $serverConfig,
+		private CommandService $commandService,
+		private IInitialState $initialState,
+		private ICacheFactory $memcacheFactory,
+		private IGroupManager $groupManager,
+		private MatterbridgeManager $bridgeManager,
 		IUserSession $userSession,
-		IL10N $l10n,
-		IFactory $l10nFactory,
+		private IL10N $l10n,
+		private IFactory $l10nFactory,
 	) {
-		$this->talkConfig = $talkConfig;
-		$this->serverConfig = $serverConfig;
-		$this->commandService = $commandService;
-		$this->initialState = $initialState;
-		$this->memcacheFactory = $memcacheFactory;
-		$this->groupManager = $groupManager;
-		$this->bridgeManager = $bridgeManager;
 		$this->currentUser = $userSession->getUser();
-		$this->l10n = $l10n;
-		$this->l10nFactory = $l10nFactory;
 	}
 
 	/**
@@ -482,6 +464,7 @@ class AdminSettings implements ISettings {
 			'secret' => $this->talkConfig->getRecordingSecret(),
 			'uploadLimit' => is_infinite($uploadLimit) ? 0 : $uploadLimit,
 		]);
+		$this->initialState->provideInitialState('recording_consent', $this->talkConfig->getRecordingConsentConfig());
 	}
 
 	protected function initSIPBridge(): void {
@@ -490,6 +473,7 @@ class AdminSettings implements ISettings {
 		$this->initialState->provideInitialState('sip_bridge_groups', $groups);
 		$this->initialState->provideInitialState('sip_bridge_shared_secret', $this->talkConfig->getSIPSharedSecret());
 		$this->initialState->provideInitialState('sip_bridge_dialin_info', $this->talkConfig->getDialInInfo());
+		$this->initialState->provideInitialState('sip_bridge_dialout', $this->talkConfig->isSIPDialOutEnabled());
 	}
 
 	protected function getGroupDetailsArray(array $gids, string $configKey): array {

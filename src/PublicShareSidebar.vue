@@ -21,7 +21,7 @@
   -->
 
 <template>
-	<transition name="slide-right">
+	<TransitionWrapper name="slide-right">
 		<aside v-if="isOpen" id="talk-sidebar">
 			<div v-if="!conversation" class="emptycontent room-not-joined">
 				<div class="icon icon-talk" />
@@ -46,10 +46,10 @@
 				<PreventUnload :when="warnLeaving" />
 				<CallButton class="call-button" />
 				<ChatView />
-				<MediaSettings :initialize-on-mounted="false" />
+				<MediaSettings :initialize-on-mounted="false" :recording-consent-given.sync="recordingConsentGiven" />
 			</template>
 		</aside>
-	</transition>
+	</TransitionWrapper>
 </template>
 
 <script>
@@ -65,6 +65,7 @@ import ChatView from './components/ChatView.vue'
 import MediaSettings from './components/MediaSettings/MediaSettings.vue'
 import CallButton from './components/TopBar/CallButton.vue'
 import TopBar from './components/TopBar/TopBar.vue'
+import TransitionWrapper from './components/TransitionWrapper.vue'
 
 import { useIsInCall } from './composables/useIsInCall.js'
 import browserCheck from './mixins/browserCheck.js'
@@ -93,6 +94,7 @@ export default {
 		PreventUnload,
 		MediaSettings,
 		TopBar,
+		TransitionWrapper,
 	},
 
 	mixins: [
@@ -123,6 +125,7 @@ export default {
 		return {
 			fetchCurrentConversationIntervalId: null,
 			joiningConversation: false,
+			recordingConsentGiven: false,
 		}
 	},
 
@@ -279,24 +282,6 @@ export default {
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
-}
-
-.slide-right-leave-active,
-.slide-right-enter-active {
-	transition-duration: var(--animation-quick);
-	transition-property: min-width, max-width;
-}
-
-.slide-right-enter-to,
-.slide-right-leave {
-	min-width: 300px;
-	max-width: 500px;
-}
-
-.slide-right-enter,
-.slide-right-leave-to {
-	min-width: 0 !important;
-	max-width: 0 !important;
 }
 
 #talk-sidebar > .emptycontent {

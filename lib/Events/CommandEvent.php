@@ -27,21 +27,19 @@ use OCA\Talk\Model\Command;
 use OCA\Talk\Room;
 use OCP\Comments\IComment;
 
+/**
+ * @deprecated
+ */
 class CommandEvent extends ChatEvent {
-	protected Command $command;
-	protected string $arguments;
 	protected string $output = '';
-
 
 	public function __construct(
 		Room $room,
 		IComment $message,
-		Command $command,
-		string $arguments,
+		protected Command $command,
+		protected string $arguments,
 	) {
 		parent::__construct($room, $message);
-		$this->command = $command;
-		$this->arguments = $arguments;
 	}
 
 	public function getCommand(): Command {

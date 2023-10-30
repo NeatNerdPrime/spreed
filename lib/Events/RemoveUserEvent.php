@@ -27,18 +27,19 @@ use OCA\Talk\Participant;
 use OCA\Talk\Room;
 use OCP\IUser;
 
+/**
+ * @deprecated
+ */
 class RemoveUserEvent extends RemoveParticipantEvent {
-	protected IUser $user;
 
 	public function __construct(
 		Room $room,
 		Participant $participant,
-		IUser $user,
+		protected IUser $user,
 		string $reason,
 		array $sessions = [],
 	) {
 		parent::__construct($room, $participant, $reason, $sessions);
-		$this->user = $user;
 	}
 
 	public function getUser(): IUser {

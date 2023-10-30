@@ -16,10 +16,11 @@ And in the works for the [coming versions](https://github.com/nextcloud/spreed/m
 
 	]]></description>
 
-	<version>18.0.0-dev.1</version>
+	<version>18.0.0-dev.9</version>
 	<licence>agpl</licence>
 
 	<author>Daniel Calviño Sánchez</author>
+	<author>Dorra Jaouad</author>
 	<author>Grigorii Shartsev</author>
 	<author>Ivan Sein</author>
 	<author>Jan-Christoph Borchardt</author>
@@ -28,7 +29,6 @@ And in the works for the [coming versions](https://github.com/nextcloud/spreed/m
 	<author>Marcel Hibbe</author>
 	<author>Marcel Müller</author>
 	<author>Marco Ambrosini</author>
-	<author>Vitor Mattos</author>
 
 	<namespace>Talk</namespace>
 
@@ -56,13 +56,15 @@ And in the works for the [coming versions](https://github.com/nextcloud/spreed/m
 	</dependencies>
 
 	<background-jobs>
-		<job>OCA\Talk\BackgroundJob\ExpireSignalingMessage</job>
-		<job>OCA\Talk\BackgroundJob\RemoveEmptyRooms</job>
-		<job>OCA\Talk\BackgroundJob\ResetAssignedSignalingServer</job>
-		<job>OCA\Talk\BackgroundJob\CheckReferenceIdColumn</job>
 		<job>OCA\Talk\BackgroundJob\CheckHostedSignalingServer</job>
 		<job>OCA\Talk\BackgroundJob\CheckMatterbridges</job>
+		<job>OCA\Talk\BackgroundJob\CheckReferenceIdColumn</job>
+		<job>OCA\Talk\BackgroundJob\CheckTurnCertificate</job>
 		<job>OCA\Talk\BackgroundJob\ExpireChatMessages</job>
+		<job>OCA\Talk\BackgroundJob\ExpireSignalingMessage</job>
+		<job>OCA\Talk\BackgroundJob\Reminder</job>
+		<job>OCA\Talk\BackgroundJob\RemoveEmptyRooms</job>
+		<job>OCA\Talk\BackgroundJob\ResetAssignedSignalingServer</job>
 	</background-jobs>
 
 	<repair-steps>
@@ -80,6 +82,12 @@ And in the works for the [coming versions](https://github.com/nextcloud/spreed/m
 	</repair-steps>
 
 	<commands>
+		<command>OCA\Talk\Command\Bot\Install</command>
+		<command>OCA\Talk\Command\Bot\ListBots</command>
+		<command>OCA\Talk\Command\Bot\Remove</command>
+		<command>OCA\Talk\Command\Bot\State</command>
+		<command>OCA\Talk\Command\Bot\Setup</command>
+		<command>OCA\Talk\Command\Bot\Uninstall</command>
 		<command>OCA\Talk\Command\Command\Add</command>
 		<command>OCA\Talk\Command\Command\AddSamples</command>
 		<command>OCA\Talk\Command\Command\Delete</command>
@@ -89,6 +97,7 @@ And in the works for the [coming versions](https://github.com/nextcloud/spreed/m
 		<command>OCA\Talk\Command\Monitor\Calls</command>
 		<command>OCA\Talk\Command\Monitor\HasActiveCalls</command>
 		<command>OCA\Talk\Command\Monitor\Room</command>
+		<command>OCA\Talk\Command\Recording\Consent</command>
 		<command>OCA\Talk\Command\Room\Add</command>
 		<command>OCA\Talk\Command\Room\Create</command>
 		<command>OCA\Talk\Command\Room\Delete</command>

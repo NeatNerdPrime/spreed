@@ -23,7 +23,8 @@
 		@dragover.prevent="handleDragOver"
 		@dragleave.prevent="handleDragLeave"
 		@drop.prevent="handleDropFiles">
-		<transition name="slide" mode="out-in">
+		<GuestWelcomeWindow v-if="isGuestWithoutDisplayName" :token="token" />
+		<TransitionWrapper name="slide-up" mode="out-in">
 			<div v-show="isDraggingOver"
 				class="dragover">
 				<div class="drop-hint">
@@ -37,33 +38,64 @@
 					</h2>
 				</div>
 			</div>
-		</transition>
+		</TransitionWrapper>
 		<MessagesList role="region"
 			:aria-label="t('spreed', 'Conversation messages')"
 			:token="token"
+			:is-chat-scrolled-to-bottom.sync="isChatScrolledToBottom"
 			:is-visible="isVisible" />
 		<NewMessage v-if="containerId"
+			ref="newMessage"
 			role="region"
 			:token="token"
 			:container="containerId"
 			has-typing-indicator
 			:aria-label="t('spreed', 'Post message')" />
+
+		<!-- File upload dialog -->
+		<NewMessageUploadEditor />
+
+		<TransitionWrapper name="fade">
+			<NcButton v-show="!isChatScrolledToBottom"
+				type="secondary"
+				:aria-label="t('spreed', 'Scroll to bottom')"
+				class="scroll-to-bottom"
+				:style="`bottom: ${scrollButtonOffset}px`"
+				@click="smoothScrollToBottom">
+				<template #icon>
+					<ChevronDoubleDown :size="20" />
+				</template>
+			</NcButton>
+		</TransitionWrapper>
 	</div>
 </template>
 
 <script>
+import ChevronDoubleDown from 'vue-material-design-icons/ChevronDoubleDown.vue'
+
+import NcButton from '@nextcloud/vue/dist/Components/NcButton.js'
+
+import GuestWelcomeWindow from './GuestWelcomeWindow.vue'
 import MessagesList from './MessagesList/MessagesList.vue'
 import NewMessage from './NewMessage/NewMessage.vue'
+import NewMessageUploadEditor from './NewMessage/NewMessageUploadEditor.vue'
+import TransitionWrapper from './TransitionWrapper.vue'
 
 import { CONVERSATION } from '../constants.js'
+import { EventBus } from '../services/EventBus.js'
 
 export default {
 
 	name: 'ChatView',
 
 	components: {
+		NcButton,
+		ChevronDoubleDown,
 		MessagesList,
 		NewMessage,
+		NewMessageUploadEditor,
+		TransitionWrapper,
+		GuestWelcomeWindow,
 	},
 
 	props: {
@@ -75,6 +107,8 @@ export default {
 
 	data() {
 		return {
+			isChatScrolledToBottom: true,
+			scrollButtonOffset: undefined,
 			isDraggingOver: false,
 			containerId: undefined,
 		}
@@ -84,6 +118,12 @@ export default {
 		isGuest() {
 			return this.$store.getters.getActorType() === 'guests'
 		},
+
+		isGuestWithoutDisplayName() {
+			const userName = this.$store.getters.getDisplayName()
+			return !userName && this.isGuest
+		},
+
 		dropHintText() {
 			if (this.isGuest) {
 				return t('spreed', 'You need to be logged in to upload files')
@@ -104,7 +144,23 @@ export default {
 		token() {
 			return this.$store.getters.getToken()
 		},
+
+		typingParticipants() {
+			return this.$store.getters.participantsListTyping(this.token)
+		},
 	},
+
+	watch: {
+		isVisible: {
+			immediate: true,
+			handler: 'setScrollToBottomPosition',
+		},
+
+		typingParticipants: {
+			handler: 'setScrollToBottomPosition',
+		},
+	},
+
 	mounted() {
 		// Postpone render of NewMessage until application is mounted
 		this.containerId = this.$store.getters.getMainContainerSelector()
@@ -142,14 +198,23 @@ export default {
 			// Uploads and shares the files
 			this.$store.dispatch('initialiseUpload', { files, token: this.token, uploadId })
 		},
+
+		smoothScrollToBottom() {
+			EventBus.$emit('smooth-scroll-chat-to-bottom')
+		},
+
+		setScrollToBottomPosition() {
+			this.$nextTick(() => {
+				// offset from NewMessage component by 8px, with its min-height: 69px as a fallback
+				this.scrollButtonOffset = (this.$refs.newMessage?.$el?.clientHeight ?? 69) + 8
+			})
+		},
 	},
 
 }
 </script>
 
 <style lang="scss" scoped>
-@import '../assets/variables';
-
 .chatView {
 	width: 100%;
 	height: 100%;
@@ -183,27 +248,8 @@ export default {
 	}
 }
 
-.slide {
-	&-enter {
-		transform: translateY(-50%);
-		opacity: 0;
-	}
-	&-enter-to {
-		transform: translateY(0);
-		opacity: 1;
-	}
-	&-leave {
-		transform: translateY(0);
-		opacity: 1;
-	}
-	&-leave-to {
-		transform: translateY(-50%);
-		opacity: 0;
-	}
-	&-enter-active,
-	&-leave-active {
-		pointer-events: none;
-		transition: $fade-transition-slow;
-	}
+.scroll-to-bottom {
+	position: absolute !important;
+	right: 24px;
 }
 </style>

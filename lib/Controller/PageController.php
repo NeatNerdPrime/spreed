@@ -5,6 +5,7 @@ declare(strict_types=1);
  * @copyright Copyright (c) 2016 Lukas Reschke <lukas@statuscode.ch>
  *
  * @author Lukas Reschke <lukas@statuscode.ch>
+ * @author Kate Döen <kate.doeen@nextcloud.com>
  *
  * @license GNU AGPL version 3 or any later version
  *
@@ -41,6 +42,7 @@ use OCP\App\IAppManager;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\BruteForceProtection;
+use OCP\AppFramework\Http\Attribute\IgnoreOpenAPI;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\PublicPage;
 use OCP\AppFramework\Http\Attribute\UseSession;
@@ -67,64 +69,36 @@ use OCP\Notification\IManager as INotificationManager;
 use OCP\Security\Bruteforce\IThrottler;
 use Psr\Log\LoggerInterface;
 
+#[IgnoreOpenAPI]
 class PageController extends Controller {
 	use TInitialState;
-
-	private ?string $userId;
-	private IEventDispatcher $eventDispatcher;
-	private RoomController $api;
-	private TalkSession $talkSession;
-	private IUserSession $userSession;
-	private LoggerInterface $logger;
-	private Manager $manager;
-	private ParticipantService $participantService;
-	private RoomService $roomService;
-	private IURLGenerator $url;
-	private INotificationManager $notificationManager;
-	private IAppManager $appManager;
-	private IRootFolder $rootFolder;
-	private IThrottler $throttler;
 
 	public function __construct(
 		string $appName,
 		IRequest $request,
-		IEventDispatcher $eventDispatcher,
-		RoomController $api,
-		TalkSession $session,
-		IUserSession $userSession,
-		?string $UserId,
-		LoggerInterface $logger,
-		Manager $manager,
-		ParticipantService $participantService,
-		RoomService $roomService,
-		IURLGenerator $url,
-		INotificationManager $notificationManager,
-		IAppManager $appManager,
+		private IEventDispatcher $eventDispatcher,
+		private RoomController $api,
+		private TalkSession $talkSession,
+		private IUserSession $userSession,
+		private ?string $userId,
+		private LoggerInterface $logger,
+		private Manager $manager,
+		private ParticipantService $participantService,
+		private RoomService $roomService,
+		private IURLGenerator $url,
+		private INotificationManager $notificationManager,
+		private IAppManager $appManager,
 		IInitialState $initialState,
 		ICacheFactory $memcacheFactory,
-		IRootFolder $rootFolder,
-		IThrottler $throttler,
+		private IRootFolder $rootFolder,
+		private IThrottler $throttler,
 		Config $talkConfig,
 		IConfig $serverConfig,
 		IGroupManager $groupManager,
 	) {
 		parent::__construct($appName, $request);
-		$this->eventDispatcher = $eventDispatcher;
-		$this->api = $api;
-		$this->talkSession = $session;
-		$this->userSession = $userSession;
-		$this->userId = $UserId;
-		$this->logger = $logger;
-		$this->manager = $manager;
-		$this->participantService = $participantService;
-		$this->roomService = $roomService;
-		$this->url = $url;
-		$this->notificationManager = $notificationManager;
-		$this->appManager = $appManager;
 		$this->initialState = $initialState;
 		$this->memcacheFactory = $memcacheFactory;
-		$this->rootFolder = $rootFolder;
-		$this->throttler = $throttler;
 		$this->talkConfig = $talkConfig;
 		$this->serverConfig = $serverConfig;
 		$this->groupManager = $groupManager;
@@ -156,19 +130,36 @@ class PageController extends Controller {
 	#[BruteForceProtection(action: 'talkRoomPassword')]
 	public function authenticatePassword(string $token, string $password = ''): Response {
 		// This is the entry point from the `/call/{token}` URL which is hardcoded in the server.
-		return $this->index($token, '', $password);
+		return $this->pageHandler($token, '', $password);
 	}
 
 	#[NoCSRFRequired]
 	#[PublicPage]
 	public function notFound(): Response {
-		return $this->index();
+		return $this->pageHandler();
 	}
 
 	#[NoCSRFRequired]
 	#[PublicPage]
 	public function duplicateSession(): Response {
-		return $this->index();
+		return $this->pageHandler();
+	}
+
+	/**
+	 * @param string $token
+	 * @param string $callUser
+	 * @return TemplateResponse|RedirectResponse
+	 * @throws HintException
+	 */
+	#[NoCSRFRequired]
+	#[PublicPage]
+	#[BruteForceProtection(action: 'talkRoomToken')]
+	#[UseSession]
+	public function index(string $token = '', string $callUser = ''): Response {
+		if ($callUser !== '') {
+			$token = '';
+		}
+		return $this->pageHandler($token, $callUser);
 	}
 
 	/**
@@ -178,11 +169,7 @@ class PageController extends Controller {
 	 * @return TemplateResponse|RedirectResponse
 	 * @throws HintException
 	 */
-	#[NoCSRFRequired]
-	#[PublicPage]
-	#[BruteForceProtection(action: 'talkRoomToken')]
-	#[UseSession]
-	public function index(string $token = '', string $callUser = '', string $password = ''): Response {
+	protected function pageHandler(string $token = '', string $callUser = '', string $password = ''): Response {
 		$bruteForceToken = $token;
 		$user = $this->userSession->getUser();
 		if (!$user instanceof IUser) {
@@ -238,7 +225,7 @@ class PageController extends Controller {
 					if ($passwordVerification['result']) {
 						$this->talkSession->renewSessionId();
 						$this->talkSession->setPasswordForRoom($token, $password);
-						$this->throttler->resetDelay($this->request->getRemoteAddress(), 'talkRoomPassword', ['token' => $token]);
+						$this->throttler->resetDelay($this->request->getRemoteAddress(), 'talkRoomPassword', ['token' => $token, 'action' => 'talkRoomPassword']);
 					} else {
 						$this->talkSession->removePasswordForRoom($token);
 						$showBruteForceWarning = $this->throttler->getDelay($this->request->getRemoteAddress(), 'talkRoomPassword') > 5000;
@@ -277,7 +264,7 @@ class PageController extends Controller {
 
 		$response = new TemplateResponse($this->appName, 'index', [
 			'app' => Application::APP_ID,
-			'id-app-content' => '#app-content-vue',
+			'id-app-content' => '#content-vue',
 			'id-app-navigation' => '#app-navigation-vue',
 		]);
 
@@ -328,7 +315,7 @@ class PageController extends Controller {
 		$this->eventDispatcher->dispatchTyped(new RenderReferenceEvent());
 
 		$response = new PublicTemplateResponse($this->appName, 'recording', [
-			'id-app-content' => '#app-content-vue',
+			'id-app-content' => '#content-vue',
 			'id-app-navigation' => null,
 		]);
 
@@ -381,7 +368,7 @@ class PageController extends Controller {
 			if ($passwordVerification['result']) {
 				$this->talkSession->renewSessionId();
 				$this->talkSession->setPasswordForRoom($token, $password);
-				$this->throttler->resetDelay($this->request->getRemoteAddress(), 'talkRoomPassword', ['token' => $token]);
+				$this->throttler->resetDelay($this->request->getRemoteAddress(), 'talkRoomPassword', ['token' => $token, 'action' => 'talkRoomPassword']);
 			} else {
 				$this->talkSession->removePasswordForRoom($token);
 				$showBruteForceWarning = $this->throttler->getDelay($this->request->getRemoteAddress(), 'talkRoomPassword') > 5000;
@@ -403,7 +390,7 @@ class PageController extends Controller {
 		$this->eventDispatcher->dispatchTyped(new RenderReferenceEvent());
 
 		$response = new PublicTemplateResponse($this->appName, 'index', [
-			'id-app-content' => '#app-content-vue',
+			'id-app-content' => '#content-vue',
 			'id-app-navigation' => null,
 		]);
 

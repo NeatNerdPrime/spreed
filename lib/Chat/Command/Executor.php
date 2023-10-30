@@ -37,6 +37,7 @@ use OCP\IL10N;
 use Psr\Log\LoggerInterface;
 
 class Executor {
+	/** @deprecated Commands are deprecated, please switch to Nextcloud Talk bots */
 	public const EVENT_APP_EXECUTE = self::class . '::execApp';
 
 	public const PLACEHOLDER_ROOM = '{ROOM}';
@@ -44,28 +45,13 @@ class Executor {
 	public const PLACEHOLDER_ARGUMENTS = '{ARGUMENTS}';
 	public const PLACEHOLDER_ARGUMENTS_DOUBLEQUOTE_ESCAPED = '{ARGUMENTS_DOUBLEQUOTE_ESCAPED}';
 
-	protected IEventDispatcher $dispatcher;
-
-	protected ShellExecutor $shellExecutor;
-
-	protected CommandService $commandService;
-
-	protected LoggerInterface $logger;
-
-	protected IL10N $l;
-
 	public function __construct(
-		IEventDispatcher $dispatcher,
-		ShellExecutor $shellExecutor,
-		CommandService $commandService,
-		LoggerInterface $logger,
-		IL10N $l,
+		protected IEventDispatcher $dispatcher,
+		protected ShellExecutor $shellExecutor,
+		protected CommandService $commandService,
+		protected LoggerInterface $logger,
+		protected IL10N $l,
 	) {
-		$this->dispatcher = $dispatcher;
-		$this->shellExecutor = $shellExecutor;
-		$this->commandService = $commandService;
-		$this->logger = $logger;
-		$this->l = $l;
 	}
 
 	public function isCommandAvailableForParticipant(Command $command, Participant $participant): bool {
@@ -99,9 +85,9 @@ class Executor {
 			return;
 		}
 
-		if ($command->getApp() === '' && $command->getCommand() === 'help') {
+		if (($command->getApp() === '' || $command->getApp() === null) && $command->getCommand() === 'help') {
 			$output = $this->execHelp($room, $message, $arguments, $participant);
-		} elseif ($command->getApp() !== '') {
+		} elseif ($command->getApp() !== '' && $command->getApp() !== null) {
 			$output = $this->execApp($room, $message, $command, $arguments);
 		} else {
 			$output = $this->execShell($room, $message, $command, $arguments);
@@ -126,10 +112,10 @@ class Executor {
 		$commands = $this->commandService->findAll();
 
 		foreach ($commands as $command) {
-			if ($command->getApp() !== '') {
+			if ($command->getApp() !== '' && $command->getApp() !== null) {
 				$response = $this->execHelpSingleCommand($room, $message, $command->getApp() . ' ' . $command->getCommand());
 			} else {
-				if ($command->getCommand() === 'help' || strpos($command->getScript(), 'alias:') !== false ||
+				if ($command->getCommand() === 'help' || str_contains($command->getScript(), 'alias:') ||
 						!$this->isCommandAvailableForParticipant($command, $participant)) {
 					continue;
 				}
@@ -169,7 +155,7 @@ class Executor {
 				$command = $this->commandService->find('', $arguments);
 				$response = $this->execShell($room, $message, $command, '--help');
 
-				if (strpos($response, 'Description:') === 0) {
+				if (str_starts_with($response, 'Description:')) {
 					$hasHelpSection = strpos($response, "\nHelp:\n");
 					if ($hasHelpSection !== false) {
 						// Symfony console command with --help detected

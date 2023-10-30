@@ -1,26 +1,30 @@
 import { createLocalVue, shallowMount } from '@vue/test-utils'
 import { cloneDeep } from 'lodash'
+import { createPinia, setActivePinia } from 'pinia'
 import Vuex from 'vuex'
 
 import MessagesGroup from './MessagesGroup.vue'
+import MessagesSystemGroup from './MessagesSystemGroup.vue'
 
 import { ATTENDEE } from '../../../constants.js'
 import storeConfig from '../../../store/storeConfig.js'
+import { useGuestNameStore } from '../../../stores/guestName.js'
 
 describe('MessagesGroup.vue', () => {
 	const TOKEN = 'XXTOKENXX'
 	let store
 	let localVue
 	let testStoreConfig
-	let getGuestNameMock
+	let guestNameStore
 
 	beforeEach(() => {
 		localVue = createLocalVue()
 		localVue.use(Vuex)
+		setActivePinia(createPinia())
+
+		guestNameStore = useGuestNameStore()
 
 		testStoreConfig = cloneDeep(storeConfig)
-		getGuestNameMock = jest.fn()
-		testStoreConfig.modules.guestNameStore.getters.getGuestName = () => getGuestNameMock
 		// eslint-disable-next-line import/no-named-as-default-member
 		store = new Vuex.Store(testStoreConfig)
 	})
@@ -50,7 +54,6 @@ describe('MessagesGroup.vue', () => {
 					systemMessage: '',
 					timestamp: 100,
 					isReplyable: true,
-					dateSeparator: '<date separator>',
 				}, {
 					id: 110,
 					token: TOKEN,
@@ -79,51 +82,68 @@ describe('MessagesGroup.vue', () => {
 			},
 		})
 
-		const dateEl = wrapper.find('.message-group__date-header')
-		expect(dateEl.text()).toBe('<date separator>')
+		const avatarEl = wrapper.findComponent({ name: 'AvatarWrapper' })
+		expect(avatarEl.attributes('source')).toBe(ATTENDEE.ACTOR_TYPE.USERS)
+		expect(avatarEl.attributes('id')).toBe('actor-1')
+		expect(avatarEl.attributes('name')).toBe('actor one')
 
-		const avatarEl = wrapper.findComponent({ name: 'AuthorAvatar' })
-		expect(avatarEl.attributes('authortype')).toBe(ATTENDEE.ACTOR_TYPE.USERS)
-		expect(avatarEl.attributes('authorid')).toBe('actor-1')
-		expect(avatarEl.attributes('displayname')).toBe('actor one')
+		const authorEl = wrapper.find('.messages__author')
+		expect(authorEl.text()).toBe('actor one')
 
 		const messagesEl = wrapper.findAllComponents({ name: 'Message' })
 		let message = messagesEl.at(0)
 		expect(message.attributes('id')).toBe('100')
 		expect(message.attributes('message')).toBe('first')
 		expect(message.attributes('actorid')).toBe('actor-1')
-		expect(message.attributes('actordisplayname')).toBe('actor one')
 		expect(message.attributes('previousmessageid')).toBe('90')
 		expect(message.attributes('nextmessageid')).toBe('110')
-		expect(message.attributes('isfirstmessage')).toBe('true')
-		expect(message.attributes('showauthor')).toBe('true')
 		expect(message.attributes('istemporary')).not.toBeDefined()
 
 		message = messagesEl.at(1)
 		expect(message.attributes('id')).toBe('110')
 		expect(message.attributes('message')).toBe('second')
 		expect(message.attributes('actorid')).toBe('actor-1')
-		expect(message.attributes('actordisplayname')).toBe('actor one')
 		expect(message.attributes('previousmessageid')).toBe('100')
 		expect(message.attributes('nextmessageid')).toBe('120')
-		expect(message.attributes('isfirstmessage')).not.toBeDefined()
-		expect(message.attributes('showauthor')).toBe('true')
 		expect(message.attributes('istemporary')).not.toBeDefined()
 
 		message = messagesEl.at(2)
 		expect(message.attributes('id')).toBe('120')
 		expect(message.attributes('message')).toBe('third')
 		expect(message.attributes('actorid')).toBe('actor-1')
-		expect(message.attributes('actordisplayname')).toBe('actor one')
 		expect(message.attributes('previousmessageid')).toBe('110')
 		expect(message.attributes('nextmessageid')).toBe('200')
-		expect(message.attributes('isfirstmessage')).not.toBeDefined()
-		expect(message.attributes('showauthor')).toBe('true')
 		expect(message.attributes('istemporary')).toBe('true')
 	})
 
 	test('renders grouped system messages', () => {
-		const wrapper = shallowMount(MessagesGroup, {
+		const MESSAGES = [{
+			id: 100,
+			token: TOKEN,
+			actorId: 'actor-1',
+			actorDisplayName: 'actor one',
+			actorType: ATTENDEE.ACTOR_TYPE.USERS,
+			message: 'Actor entered the scene',
+			messageType: 'comment',
+			messageParameters: {},
+			systemMessage: 'call_started',
+			timestamp: 100,
+			isReplyable: false,
+		}, {
+			id: 110,
+			token: TOKEN,
+			actorId: 'actor-1',
+			actorDisplayName: 'actor one',
+			actorType: ATTENDEE.ACTOR_TYPE.USERS,
+			message: 'Actor left the scene',
+			messageType: 'comment',
+			messageParameters: {},
+			systemMessage: 'call_stopped',
+			timestamp: 200,
+			isReplyable: false,
+		}]
+
+		const wrapper = shallowMount(MessagesSystemGroup, {
 			localVue,
 			store,
 			propsData: {
@@ -131,66 +151,44 @@ describe('MessagesGroup.vue', () => {
 				token: TOKEN,
 				previousMessageId: 90,
 				nextMessageId: 200,
-				messages: [{
-					id: 100,
-					token: TOKEN,
-					actorId: 'actor-1',
-					actorDisplayName: 'actor one',
-					actorType: ATTENDEE.ACTOR_TYPE.USERS,
-					message: 'Actor entered the scene',
-					messageType: 'comment',
-					messageParameters: {},
-					systemMessage: 'call_started',
-					timestamp: 100,
-					isReplyable: false,
-					dateSeparator: '<date separator>',
-				}, {
-					id: 110,
-					token: TOKEN,
-					actorId: 'actor-1',
-					actorDisplayName: 'actor one',
-					actorType: ATTENDEE.ACTOR_TYPE.USERS,
-					message: 'Actor left the scene',
-					messageType: 'comment',
-					messageParameters: {},
-					systemMessage: 'call_stopped',
-					timestamp: 200,
-					isReplyable: false,
-				}],
+				messages: MESSAGES,
 			},
 		})
 
-		const dateEl = wrapper.find('.message-group__date-header')
-		expect(dateEl.text()).toBe('<date separator>')
-
-		const avatarEl = wrapper.findComponent({ name: 'AuthorAvatar' })
+		const avatarEl = wrapper.findComponent({ name: 'AvatarWrapper' })
 		expect(avatarEl.exists()).toBe(false)
 
 		const messagesEl = wrapper.findAllComponents({ name: 'Message' })
-		// TODO: date separator
+
 		let message = messagesEl.at(0)
-		expect(message.attributes('id')).toBe('100')
-		expect(message.attributes('message')).toBe('Actor entered the scene')
-		expect(message.attributes('actorid')).toBe('actor-1')
-		expect(message.attributes('actordisplayname')).toBe('actor one')
-		expect(message.attributes('previousmessageid')).toBe('90')
-		expect(message.attributes('nextmessageid')).toBe('110')
-		expect(message.attributes('isfirstmessage')).toBe('true')
-		expect(message.attributes('showauthor')).not.toBeDefined()
+		expect(message.props('id')).toBe(MESSAGES[0].id)
+		expect(message.props('message')).toBe(MESSAGES[0].message)
+		expect(message.props('actorid')).toBe(MESSAGES[0].actorid)
+		expect(message.props('actordisplayname')).toBe(MESSAGES[0].actordisplayname)
+		expect(message.props('previousmessageid')).toBe(MESSAGES[0].previousmessageid)
+		expect(message.props('nextmessageid')).toBe(MESSAGES[0].nextmessageid)
+		expect(message.props('isfirstmessage')).toBe(MESSAGES[0].isfirstmessage)
+		expect(message.props('showauthor')).not.toBeDefined()
 
 		message = messagesEl.at(1)
-		expect(message.attributes('id')).toBe('110')
-		expect(message.attributes('message')).toBe('Actor left the scene')
-		expect(message.attributes('actorid')).toBe('actor-1')
-		expect(message.attributes('actordisplayname')).toBe('actor one')
-		expect(message.attributes('previousmessageid')).toBe('100')
-		expect(message.attributes('nextmessageid')).toBe('200')
-		expect(message.attributes('isfirstmessage')).not.toBeDefined()
-		expect(message.attributes('showauthor')).not.toBeDefined()
+		expect(message.props('id')).toBe(MESSAGES[1].id)
+		expect(message.props('message')).toBe(MESSAGES[1].message)
+		expect(message.props('actorid')).toBe(MESSAGES[1].actorid)
+		expect(message.props('actordisplayname')).toBe(MESSAGES[1].actordisplayname)
+		expect(message.props('previousmessageid')).toBe(MESSAGES[1].previousmessageid)
+		expect(message.props('nextmessageid')).toBe(MESSAGES[1].nextmessageid)
+		expect(message.props('isfirstmessage')).not.toBeDefined()
+		expect(message.props('showauthor')).not.toBeDefined()
 	})
 
 	test('renders guest display name', () => {
-		getGuestNameMock.mockReturnValue('guest-one-display-name')
+		// Arrange
+		guestNameStore.addGuestName({
+			token: TOKEN,
+			actorId: 'actor-1',
+			actorDisplayName: 'guest-one-display-name',
+		}, { noUpdate: false })
+
 		const wrapper = shallowMount(MessagesGroup, {
 			localVue,
 			store,
@@ -211,7 +209,6 @@ describe('MessagesGroup.vue', () => {
 					systemMessage: '',
 					timestamp: 100,
 					isReplyable: true,
-					dateSeparator: '<date separator>',
 				}, {
 					id: 110,
 					token: TOKEN,
@@ -228,26 +225,22 @@ describe('MessagesGroup.vue', () => {
 			},
 		})
 
-		const dateEl = wrapper.find('.message-group__date-header')
-		expect(dateEl.text()).toBe('<date separator>')
+		const avatarEl = wrapper.findComponent({ name: 'AvatarWrapper' })
+		expect(avatarEl.attributes('source')).toBe(ATTENDEE.ACTOR_TYPE.GUESTS)
+		expect(avatarEl.attributes('id')).toBe('actor-1')
+		expect(avatarEl.attributes('name')).toBe('guest-one-display-name')
 
-		const avatarEl = wrapper.findComponent({ name: 'AuthorAvatar' })
-		expect(avatarEl.attributes('authortype')).toBe(ATTENDEE.ACTOR_TYPE.GUESTS)
-		expect(avatarEl.attributes('authorid')).toBe('actor-1')
-		expect(avatarEl.attributes('displayname')).toBe('guest-one-display-name')
+		const authorEl = wrapper.find('.messages__author')
+		expect(authorEl.text()).toBe('guest-one-display-name')
 
 		const messagesEl = wrapper.findAllComponents({ name: 'Message' })
 		let message = messagesEl.at(0)
 		expect(message.attributes('id')).toBe('100')
 		expect(message.attributes('actorid')).toBe('actor-1')
-		expect(message.attributes('actordisplayname')).toBe('guest-one-display-name')
 
 		message = messagesEl.at(1)
 		expect(message.attributes('id')).toBe('110')
 		expect(message.attributes('actorid')).toBe('actor-1')
-		expect(message.attributes('actordisplayname')).toBe('guest-one-display-name')
-
-		expect(getGuestNameMock).toHaveBeenCalledWith(TOKEN, 'actor-1')
 	})
 
 	test('renders deleted guest display name', () => {
@@ -271,7 +264,6 @@ describe('MessagesGroup.vue', () => {
 					systemMessage: '',
 					timestamp: 100,
 					isReplyable: true,
-					dateSeparator: '<date separator>',
 				}, {
 					id: 110,
 					token: TOKEN,
@@ -288,20 +280,21 @@ describe('MessagesGroup.vue', () => {
 			},
 		})
 
-		const avatarEl = wrapper.findComponent({ name: 'AuthorAvatar' })
-		expect(avatarEl.attributes('authortype')).toBe(ATTENDEE.ACTOR_TYPE.USERS)
-		expect(avatarEl.attributes('authorid')).toBe('actor-1')
-		expect(avatarEl.attributes('displayname')).toBe('Deleted user')
+		const avatarEl = wrapper.findComponent({ name: 'AvatarWrapper' })
+		expect(avatarEl.attributes('source')).toBe(ATTENDEE.ACTOR_TYPE.USERS)
+		expect(avatarEl.attributes('id')).toBe('actor-1')
+		expect(avatarEl.attributes('name')).toBe('Deleted user')
+
+		const authorEl = wrapper.find('.messages__author')
+		expect(authorEl.text()).toBe('Deleted user')
 
 		const messagesEl = wrapper.findAllComponents({ name: 'Message' })
 		let message = messagesEl.at(0)
 		expect(message.attributes('id')).toBe('100')
 		expect(message.attributes('actorid')).toBe('actor-1')
-		expect(message.attributes('actordisplayname')).toBe('Deleted user')
 
 		message = messagesEl.at(1)
 		expect(message.attributes('id')).toBe('110')
 		expect(message.attributes('actorid')).toBe('actor-1')
-		expect(message.attributes('actordisplayname')).toBe('Deleted user')
 	})
 })

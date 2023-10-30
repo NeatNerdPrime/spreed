@@ -20,25 +20,18 @@
 -->
 
 <template>
-	<div class="wrapper">
-		<NcButton type="tertiary"
-			class="toggle"
-			:aria-label="t('spreed', 'Create a new group conversation')"
-			:title="t('spreed', 'Create a new group conversation')"
-			@click="showModal">
-			<template #icon>
-				<Plus :size="20" />
-			</template>
-		</NcButton>
+	<div v-if="modal" class="wrapper">
 		<!-- New group form -->
-		<NcModal v-if="modal"
+		<NcModal v-show=" page !== 2"
+			class="conversation-form"
 			:container="container"
-			size="normal"
 			@close="closeModal">
-			<!-- Wrapper for content & navigation -->
-			<div class="new-group-conversation talk-modal">
-				<h2>{{ t('spreed', 'Create a new group conversation') }}</h2>
-				<!-- Content -->
+			<h2 class="new-group-conversation__header">
+				{{ t('spreed', 'Create a new group conversation') }}
+			</h2>
+
+			<div class="new-group-conversation__main">
+				<!-- First page -->
 				<div v-show="page === 0" class="new-group-conversation__content">
 					<NcTextField ref="conversationName"
 						v-model="conversationName"
@@ -74,7 +67,7 @@
 							type="switch"
 							:disabled="!isPublic"
 							@checked="handleCheckboxInput">
-							{{ t('spreed', 'Password protect') }}
+							<span class="checkbox__label">{{ t('spreed', 'Password protect') }}</span>
 						</NcCheckboxRadioSwitch>
 						<NcPasswordField v-if="passwordProtect"
 							autocomplete="new-password"
@@ -87,23 +80,15 @@
 				</div>
 
 				<!-- Second page -->
-				<div v-if="page === 1" class="new-group-conversation__content">
-					<SetContacts :conversation-name="conversationNameTrimmed" />
-				</div>
-
-				<!-- Third page -->
-				<div v-else-if="page === 2" class="new-group-conversation__content">
-					<Confirmation :token="newConversation.token"
-						:conversation-name="conversationNameTrimmed"
-						:error="error"
-						:is-loading="isLoading"
-						:success="success"
-						:is-public="isPublic" />
-				</div>
+				<SetContacts v-if="page === 1"
+					class="new-group-conversation__content"
+					:can-moderate-sip-dial-out="canModerateSipDialOut"
+					:conversation-name="conversationNameTrimmed" />
 			</div>
+
 			<!-- Navigation: different buttons with different actions and
 				placement are rendered depending on the current page -->
-			<div class="navigation">
+			<div class="new-group-conversation__footer">
 				<!-- First page -->
 				<NcButton v-if="page===0 && isPublic"
 					:disabled="disabled"
@@ -114,7 +99,7 @@
 				<NcButton v-if="page===0"
 					type="primary"
 					:disabled="disabled"
-					class="navigation__button-right"
+					class="new-group-conversation__button"
 					@click="handleSetConversationName">
 					{{ t('spreed', 'Add participants') }}
 				</NcButton>
@@ -126,38 +111,73 @@
 				</NcButton>
 				<NcButton v-if="page===1"
 					type="primary"
-					class="navigation__button-right"
+					class="new-group-conversation__button"
 					@click="handleCreateConversation">
 					{{ t('spreed', 'Create conversation') }}
 				</NcButton>
-				<!-- Third page -->
-				<NcButton v-if="page===2 && (error || isPublic)"
-					type="primary"
-					class="navigation__button-right"
-					@click="closeModal">
-					{{ t('spreed', 'Close') }}
-				</NcButton>
 			</div>
+		</NcModal>
+
+		<!-- Third page : this is the confirmation page-->
+		<NcModal v-if="page === 2"
+			:container="container"
+			@close="closeModal">
+			<NcEmptyContent>
+				<template #icon>
+					<LoadingComponent v-if="isLoading" />
+					<AlertCircle v-else-if="error" :size="64" />
+					<Check v-else-if="success && isPublic" :size="64" />
+				</template>
+
+				<template #description>
+					<p v-if="isLoading">
+						{{ t('spreed', 'Creating the conversation …') }}
+					</p>
+					<p v-else-if="error">
+						{{ t('spreed', 'Error while creating the conversation') }}
+					</p>
+					<p v-else-if="success && isPublic">
+						{{ t('spreed', 'All set, the conversation "{conversationName}" was created.', { conversationName }) }}
+					</p>
+				</template>
+
+				<template #action>
+					<NcButton v-if="(error || isPublic) && !isLoading"
+						ref="closeButton"
+						type="tertiary"
+						@click="closeModal">
+						{{ t('spreed', 'Close') }}
+					</NcButton>
+					<NcButton v-if="!error && success && isPublic"
+						id="copy-link"
+						ref="copyLink"
+						type="secondary"
+						@click="onClickCopyLink">
+						{{ t('spreed', 'Copy conversation link') }}
+					</NcButton>
+				</template>
+			</NcEmptyContent>
 		</NcModal>
 	</div>
 </template>
 
 <script>
 
-import Plus from 'vue-material-design-icons/Plus.vue'
-
 import { getCapabilities } from '@nextcloud/capabilities'
 import { showError } from '@nextcloud/dialogs'
+import Check from 'vue-material-design-icons/Check.vue'
+import AlertCircle from 'vue-material-design-icons/AlertCircle.vue'
 
 import NcButton from '@nextcloud/vue/dist/Components/NcButton.js'
 import NcCheckboxRadioSwitch from '@nextcloud/vue/dist/Components/NcCheckboxRadioSwitch.js'
+import NcEmptyContent from '@nextcloud/vue/dist/Components/NcEmptyContent.js'
 import NcModal from '@nextcloud/vue/dist/Components/NcModal.js'
 import NcPasswordField from '@nextcloud/vue/dist/Components/NcPasswordField.js'
 import NcTextField from '@nextcloud/vue/dist/Components/NcTextField.js'
 
 import ConversationAvatarEditor from '../../ConversationSettings/ConversationAvatarEditor.vue'
 import ListableSettings from '../../ConversationSettings/ListableSettings.vue'
-import Confirmation from './Confirmation/Confirmation.vue'
+import LoadingComponent from '../../LoadingComponent.vue'
 import SetContacts from './SetContacts/SetContacts.vue'
 
 import { useIsInCall } from '../../../composables/useIsInCall.js'
@@ -168,8 +188,8 @@ import {
 	createPrivateConversation,
 	setConversationPassword,
 } from '../../../services/conversationsService.js'
-import { EventBus } from '../../../services/EventBus.js'
 import { addParticipant } from '../../../services/participantsService.js'
+import { copyConversationLinkToClipboard } from '../../../services/urlService.js'
 
 const NEW_CONVERSATION = {
 	token: '',
@@ -188,18 +208,27 @@ export default {
 
 	components: {
 		ConversationAvatarEditor,
-		Confirmation,
 		ListableSettings,
+		LoadingComponent,
 		NcButton,
 		NcCheckboxRadioSwitch,
+		NcEmptyContent,
 		NcModal,
 		NcPasswordField,
 		NcTextField,
-		Plus,
 		SetContacts,
+		Check,
+		AlertCircle,
 	},
 
 	mixins: [participant],
+
+	props: {
+		canModerateSipDialOut: {
+			type: Boolean,
+			default: false,
+		},
+	},
 
 	setup() {
 		const isInCall = useIsInCall()
@@ -263,15 +292,26 @@ export default {
 				this.passwordProtect = false
 			}
 		},
-	},
 
-	mounted() {
-		EventBus.$on('new-group-conversation-dialog', this.showModalForItem)
-	},
+		success(value) {
+			if (!value) {
+				return
+			}
+			this.$nextTick(() => {
+				this.$refs.copyLink.$el.focus()
+			})
+		},
 
-	destroyed() {
-		EventBus.$off('new-group-conversation-dialog', this.showModalForItem)
+		error(value) {
+			if (!value) {
+				return
+			}
+			this.$nextTick(() => {
+				this.$refs.closeButton.$el.focus()
+			})
+		},
 	},
+	expose: ['showModalForItem', 'showModal'],
 
 	methods: {
 		showModal() {
@@ -370,6 +410,7 @@ export default {
 			}
 
 			this.success = true
+			this.isLoading = false
 
 			if (!this.isInCall) {
 				// Push the newly created conversation's route.
@@ -434,6 +475,10 @@ export default {
 				this.page = 1
 			}
 		},
+
+		onClickCopyLink() {
+			copyConversationLinkToClipboard(this.newConversation.token)
+		},
 	},
 
 }
@@ -441,35 +486,34 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.toggle {
-	height: 44px;
-	width: 44px;
-	padding: 0;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	margin: 0 var(--default-grid-baseline);
-}
 
 .new-group-conversation {
-	height: auto;
-	padding: 20px;
-	display: flex;
-	flex-direction: column;
-	justify-content: space-between;
-	position: relative;
+	&__header {
+		flex-shrink: 0;
+		margin: 0;
+		padding: 10px 20px;
+	}
+
+	&__main {
+		flex-grow: 1;
+		overflow: auto;
+	}
 
 	&__content {
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
+		padding: 10px 20px;
 	}
 
 	&__wrapper {
-		display: grid;
-		grid-template-columns: 1fr 2fr;
+		display: flex;
 		gap: var(--default-grid-baseline);
 		align-items: center;
+
+		.checkbox__label {
+			white-space: nowrap;
+		}
 	}
 
 	&__label {
@@ -477,32 +521,30 @@ export default {
 		margin-top: 10px;
 		padding: 4px 0;
 	}
-}
 
-/** Size full in the modal component doesn't have border radius, this adds
-it back */
-:deep(.modal-container) {
-	border-radius: var(--border-radius-large) !important;
-	height: 900px;
-}
+	&__footer {
+		flex-shrink: 0;
+		display: flex;
+		justify-content: space-between;
+		padding: 10px 20px;
+		box-shadow: 0 -10px 5px var(--color-main-background);
+	}
 
-:deep(.modal-wrapper .modal-container) {
-	height: max-content;
-}
-
-.navigation {
-	position: sticky;
-	bottom: -1px;
-	display: flex;
-	justify-content: space-between;
-	flex: 0 0 40px;
-	background-color: var(--color-main-background);
-	box-shadow: 0 -10px 5px var(--color-main-background);
-	z-index: 1;
-	padding: 0 20px 20px;
-
-	&__button-right {
+	&__button {
 		margin-left: auto;
+	}
+}
+
+.conversation-form :deep(.modal-wrapper) {
+	.modal-container {
+		height: 90%;
+	}
+
+	.modal-container__content {
+		display: flex !important;
+		flex-direction: column;
+		height: 100%;
+		overflow: hidden !important;
 	}
 }
 
@@ -515,6 +557,14 @@ it back */
 	&:first-child {
 		margin-top: 0;
 	}
+}
+
+:deep(.empty-content) {
+	padding: 20px;
+}
+
+:deep(.empty-content__action) {
+	gap: 10px;
 }
 
 </style>

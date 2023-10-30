@@ -51,16 +51,6 @@ use OCP\Share\Exceptions\ShareNotFound;
 use Sabre\VObject\Reader;
 
 class SystemMessage {
-	protected IUserManager $userManager;
-	protected IGroupManager $groupManager;
-	protected GuestManager $guestManager;
-	protected ParticipantService $participantService;
-	protected IPreviewManager $previewManager;
-	protected RoomShareProvider $shareProvider;
-	protected PhotoCache $photoCache;
-	protected IRootFolder $rootFolder;
-	protected ICloudIdManager $cloudIdManager;
-	protected IURLGenerator $url;
 	protected ?IL10N $l = null;
 
 	/**
@@ -75,29 +65,21 @@ class SystemMessage {
 	protected array $circleLinks = [];
 	/** @var string[] */
 	protected array $guestNames = [];
+	/** @var array<string, array<string, string>> */
+	protected array $phoneNames = [];
 
 	public function __construct(
-		IUserManager $userManager,
-		IGroupManager $groupManager,
-		GuestManager $guestManager,
-		ParticipantService $participantService,
-		IPreviewManager $previewManager,
-		RoomShareProvider $shareProvider,
-		PhotoCache $photoCache,
-		IRootFolder $rootFolder,
-		ICloudIdManager $cloudIdManager,
-		IURLGenerator $url,
+		protected IUserManager $userManager,
+		protected IGroupManager $groupManager,
+		protected GuestManager $guestManager,
+		protected ParticipantService $participantService,
+		protected IPreviewManager $previewManager,
+		protected RoomShareProvider $shareProvider,
+		protected PhotoCache $photoCache,
+		protected IRootFolder $rootFolder,
+		protected ICloudIdManager $cloudIdManager,
+		protected IURLGenerator $url,
 	) {
-		$this->userManager = $userManager;
-		$this->groupManager = $groupManager;
-		$this->guestManager = $guestManager;
-		$this->participantService = $participantService;
-		$this->previewManager = $previewManager;
-		$this->shareProvider = $shareProvider;
-		$this->photoCache = $photoCache;
-		$this->rootFolder = $rootFolder;
-		$this->cloudIdManager = $cloudIdManager;
-		$this->url = $url;
 	}
 
 	/**
@@ -118,7 +100,10 @@ class SystemMessage {
 		$parsedParameters = ['actor' => $this->getActorFromComment($room, $comment)];
 
 		$participant = $chatMessage->getParticipant();
-		if (!$participant->isGuest()) {
+		if ($participant === null) {
+			$currentActorId = null;
+			$currentUserIsActor = false;
+		} elseif (!$participant->isGuest()) {
 			$currentActorId = $participant->getAttendee()->getActorId();
 			$currentUserIsActor = $parsedParameters['actor']['type'] === 'user' &&
 				$participant->getAttendee()->getActorType() === Attendee::ACTOR_USERS &&
@@ -208,11 +193,11 @@ class SystemMessage {
 				$parsedMessage = $this->l->t('An administrator opened the conversation to registered users');
 			}
 		} elseif ($message === 'listable_all') {
-			$parsedMessage = $this->l->t('{actor} opened the conversation to registered and guest app users');
+			$parsedMessage = $this->l->t('{actor} opened the conversation to registered users and users created with the Guests app');
 			if ($currentUserIsActor) {
-				$parsedMessage = $this->l->t('You opened the conversation to registered and guest app users');
+				$parsedMessage = $this->l->t('You opened the conversation to registered users and users created with the Guests app');
 			} elseif ($cliIsActor) {
-				$parsedMessage = $this->l->t('An administrator opened the conversation to registered and guest app users');
+				$parsedMessage = $this->l->t('An administrator opened the conversation to registered users and users created with the Guests app');
 			}
 		} elseif ($message === 'lobby_timer_reached') {
 			$parsedMessage = $this->l->t('The conversation is now open to everyone');
@@ -275,7 +260,7 @@ class SystemMessage {
 				}
 			} elseif ($currentUserIsActor) {
 				$parsedMessage = $this->l->t('You added {user}');
-			} elseif (!$participant->isGuest() && $currentActorId === $parsedParameters['user']['id']) {
+			} elseif ($participant && !$participant->isGuest() && $currentActorId === $parsedParameters['user']['id']) {
 				$parsedMessage = $this->l->t('{actor} added you');
 				if ($cliIsActor) {
 					$parsedMessage = $this->l->t('An administrator added you');
@@ -295,7 +280,7 @@ class SystemMessage {
 				$parsedMessage = $this->l->t('{actor} removed {user}');
 				if ($currentUserIsActor) {
 					$parsedMessage = $this->l->t('You removed {user}');
-				} elseif (!$participant->isGuest() && $currentActorId === $parsedParameters['user']['id']) {
+				} elseif ($participant && !$participant->isGuest() && $currentActorId === $parsedParameters['user']['id']) {
 					$parsedMessage = $this->l->t('{actor} removed you');
 					if ($cliIsActor) {
 						$parsedMessage = $this->l->t('An administrator removed you');
@@ -306,11 +291,11 @@ class SystemMessage {
 			}
 		} elseif ($message === 'federated_user_added') {
 			$parsedParameters['federated_user'] = $this->getRemoteUser($parameters['federated_user']);
-			$parsedMessage = $this->l->t('{actor} invited {user}');
+			$parsedMessage = $this->l->t('{actor} invited {federated_user}');
 			if ($currentUserIsActor) {
-				$parsedMessage = $this->l->t('You invited {user}');
+				$parsedMessage = $this->l->t('You invited {federated_user}');
 			} elseif ($cliIsActor) {
-				$parsedMessage = $this->l->t('An administrator invited {user}');
+				$parsedMessage = $this->l->t('An administrator invited {federated_user}');
 			} elseif ($parsedParameters['federated_user']['id'] === $parsedParameters['actor']['id']) {
 				$parsedMessage = $this->l->t('{federated_user} accepted the invitation');
 			}
@@ -356,12 +341,28 @@ class SystemMessage {
 			} elseif ($cliIsActor) {
 				$parsedMessage = $this->l->t('An administrator removed circle {circle}');
 			}
+		} elseif ($message === 'phone_added') {
+			$parsedParameters['phone'] = $this->getPhone($room, $parameters['phone'], $parameters['name']);
+			$parsedMessage = $this->l->t('{actor} added {phone}');
+			if ($currentUserIsActor) {
+				$parsedMessage = $this->l->t('You added {phone}');
+			} elseif ($cliIsActor) {
+				$parsedMessage = $this->l->t('An administrator added {phone}');
+			}
+		} elseif ($message === 'phone_removed') {
+			$parsedParameters['phone'] = $this->getPhone($room, $parameters['phone'], $parameters['name']);
+			$parsedMessage = $this->l->t('{actor} removed {phone}');
+			if ($currentUserIsActor) {
+				$parsedMessage = $this->l->t('You removed {phone}');
+			} elseif ($cliIsActor) {
+				$parsedMessage = $this->l->t('An administrator removed {phone}');
+			}
 		} elseif ($message === 'moderator_promoted') {
 			$parsedParameters['user'] = $this->getUser($parameters['user']);
 			$parsedMessage = $this->l->t('{actor} promoted {user} to moderator');
 			if ($currentUserIsActor) {
 				$parsedMessage = $this->l->t('You promoted {user} to moderator');
-			} elseif (!$participant->isGuest() && $currentActorId === $parsedParameters['user']['id']) {
+			} elseif ($participant && !$participant->isGuest() && $currentActorId === $parsedParameters['user']['id']) {
 				$parsedMessage = $this->l->t('{actor} promoted you to moderator');
 				if ($cliIsActor) {
 					$parsedMessage = $this->l->t('An administrator promoted you to moderator');
@@ -374,7 +375,7 @@ class SystemMessage {
 			$parsedMessage = $this->l->t('{actor} demoted {user} from moderator');
 			if ($currentUserIsActor) {
 				$parsedMessage = $this->l->t('You demoted {user} from moderator');
-			} elseif (!$participant->isGuest() && $currentActorId === $parsedParameters['user']['id']) {
+			} elseif ($participant && !$participant->isGuest() && $currentActorId === $parsedParameters['user']['id']) {
 				$parsedMessage = $this->l->t('{actor} demoted you from moderator');
 				if ($cliIsActor) {
 					$parsedMessage = $this->l->t('An administrator demoted you from moderator');
@@ -387,7 +388,7 @@ class SystemMessage {
 			$parsedMessage = $this->l->t('{actor} promoted {user} to moderator');
 			if ($currentUserIsActor) {
 				$parsedMessage = $this->l->t('You promoted {user} to moderator');
-			} elseif ($participant->isGuest() && $currentActorId === $parsedParameters['user']['id']) {
+			} elseif ($participant && $participant->isGuest() && $currentActorId === $parsedParameters['user']['id']) {
 				$parsedMessage = $this->l->t('{actor} promoted you to moderator');
 				if ($cliIsActor) {
 					$parsedMessage = $this->l->t('An administrator promoted you to moderator');
@@ -400,7 +401,7 @@ class SystemMessage {
 			$parsedMessage = $this->l->t('{actor} demoted {user} from moderator');
 			if ($currentUserIsActor) {
 				$parsedMessage = $this->l->t('You demoted {user} from moderator');
-			} elseif ($participant->isGuest() && $currentActorId === $parsedParameters['user']['id']) {
+			} elseif ($participant && $participant->isGuest() && $currentActorId === $parsedParameters['user']['id']) {
 				$parsedMessage = $this->l->t('{actor} demoted you from moderator');
 				if ($cliIsActor) {
 					$parsedMessage = $this->l->t('An administrator demoted you from moderator');
@@ -425,6 +426,10 @@ class SystemMessage {
 					}
 				} else {
 					$chatMessage->setMessageType(ChatManager::VERB_MESSAGE);
+				}
+
+				if (isset($metaData['caption']) && $metaData['caption'] !== '') {
+					$parsedMessage = $metaData['caption'];
 				}
 			} catch (\Exception $e) {
 				$parsedMessage = $this->l->t('{actor} shared a file which is no longer available');
@@ -583,19 +588,20 @@ class SystemMessage {
 		$parsedParameters = ['actor' => $this->getActor($room, $data['deleted_by_type'], $data['deleted_by_id'])];
 
 		$participant = $chatMessage->getParticipant();
-		$currentActorId = $participant->getAttendee()->getActorId();
 
 		$authorIsActor = $data['deleted_by_type'] === $chatMessage->getComment()->getActorType()
 			&& $data['deleted_by_id'] === $chatMessage->getComment()->getActorId();
 
-		if (!$participant->isGuest()) {
+		if ($participant === null) {
+			$currentUserIsActor = false;
+		} elseif (!$participant->isGuest()) {
 			$currentUserIsActor = $parsedParameters['actor']['type'] === 'user' &&
 				$participant->getAttendee()->getActorType() === Attendee::ACTOR_USERS &&
-				$currentActorId === $parsedParameters['actor']['id'];
+				$participant->getAttendee()->getActorId() === $parsedParameters['actor']['id'];
 		} else {
 			$currentUserIsActor = $parsedParameters['actor']['type'] === 'guest' &&
 				$participant->getAttendee()->getActorType() === 'guest' &&
-				$currentActorId === $parsedParameters['actor']['id'];
+				$participant->getAttendee()->getActorId() === $parsedParameters['actor']['id'];
 		}
 
 		if ($chatMessage->getMessageType() === ChatManager::VERB_MESSAGE_DELETED) {
@@ -619,17 +625,17 @@ class SystemMessage {
 	}
 
 	/**
-	 * @param Participant $participant
+	 * @param ?Participant $participant
 	 * @param string $shareId
 	 * @return array
 	 * @throws InvalidPathException
 	 * @throws NotFoundException
 	 * @throws ShareNotFound
 	 */
-	protected function getFileFromShare(Participant $participant, string $shareId): array {
+	protected function getFileFromShare(?Participant $participant, string $shareId): array {
 		$share = $this->shareProvider->getShareById((int) $shareId);
 
-		if (!$participant->isGuest()) {
+		if ($participant && !$participant->isGuest()) {
 			if ($share->getShareOwner() !== $participant->getAttendee()->getActorId()) {
 				$userFolder = $this->rootFolder->getUserFolder($participant->getAttendee()->getActorId());
 				if ($userFolder instanceof Node) {
@@ -719,6 +725,9 @@ class SystemMessage {
 		if ($actorType === Attendee::ACTOR_GUESTS || $actorType === Attendee::ACTOR_EMAILS) {
 			return $this->getGuest($room, $actorType, $actorId);
 		}
+		if ($actorType === Attendee::ACTOR_PHONES) {
+			return $this->getPhone($room, $actorId, '');
+		}
 		if ($actorType === Attendee::ACTOR_FEDERATED_USERS) {
 			return $this->getRemoteUser($actorId);
 		}
@@ -782,6 +791,18 @@ class SystemMessage {
 		];
 	}
 
+	protected function getPhone(Room $room, string $actorId, string $fallbackDisplayName): array {
+		if (!isset($this->phoneNames[$room->getToken()][$actorId])) {
+			$this->phoneNames[$room->getToken()][$actorId] = $this->getDisplayNamePhone($room, $actorId, $fallbackDisplayName);
+		}
+
+		return [
+			'type' => 'highlight',
+			'id' => $actorId,
+			'name' => $this->phoneNames[$room->getToken()][$actorId],
+		];
+	}
+
 	protected function getCircle(string $circleId): array {
 		if (!isset($this->circleNames[$circleId])) {
 			$this->loadCircleDetails($circleId);
@@ -801,6 +822,18 @@ class SystemMessage {
 			'name' => $this->circleNames[$circleId],
 			'url' => $this->circleLinks[$circleId],
 		];
+	}
+
+	protected function getDisplayNamePhone(Room $room, string $actorId, string $fallbackDisplayName): string {
+		try {
+			$participant = $this->participantService->getParticipantByActor($room, Attendee::ACTOR_PHONES, $actorId);
+			return $participant->getAttendee()->getDisplayName();
+		} catch (ParticipantNotFoundException) {
+			if ($fallbackDisplayName) {
+				return $fallbackDisplayName;
+			}
+			return $this->l->t('Unknown number');
+		}
 	}
 
 	protected function getDisplayNameGroup(string $gid): string {
@@ -839,6 +872,10 @@ class SystemMessage {
 	}
 
 	protected function getGuestName(Room $room, string $actorType, string $actorId): string {
+		if ($actorId === Attendee::ACTOR_ID_CLI) {
+			return $this->l->t('Guest');
+		}
+
 		try {
 			$participant = $this->participantService->getParticipantByActor($room, $actorType, $actorId);
 			$name = $participant->getAttendee()->getDisplayName();

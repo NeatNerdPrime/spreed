@@ -21,7 +21,7 @@
   -->
 
 <template>
-	<transition name="slide-right">
+	<TransitionWrapper name="slide-right">
 		<aside v-if="isOpen" id="talk-sidebar">
 			<div v-if="!token" class="emptycontent">
 				<div class="icon icon-talk" />
@@ -32,18 +32,22 @@
 					:is-sidebar="true" />
 				<CallView :token="token" :is-sidebar="true" />
 				<ChatView />
+				<MediaSettings :initialize-on-mounted="false" :recording-consent-given.sync="recordingConsentGiven" />
 			</template>
 		</aside>
-	</transition>
+	</TransitionWrapper>
 </template>
 
 <script>
 import { getCurrentUser } from '@nextcloud/auth'
+import { emit } from '@nextcloud/event-bus'
 import { loadState } from '@nextcloud/initial-state'
 
 import CallView from './components/CallView/CallView.vue'
 import ChatView from './components/ChatView.vue'
+import MediaSettings from './components/MediaSettings/MediaSettings.vue'
 import TopBar from './components/TopBar/TopBar.vue'
+import TransitionWrapper from './components/TransitionWrapper.vue'
 
 import sessionIssueHandler from './mixins/sessionIssueHandler.js'
 import talkHashCheck from './mixins/talkHashCheck.js'
@@ -60,7 +64,9 @@ export default {
 	components: {
 		CallView,
 		ChatView,
+		MediaSettings,
 		TopBar,
+		TransitionWrapper,
 	},
 
 	mixins: [
@@ -72,6 +78,7 @@ export default {
 		return {
 			fetchCurrentConversationIntervalId: null,
 			isWaitingToClose: false,
+			recordingConsentGiven: false
 		}
 	},
 
@@ -134,8 +141,9 @@ export default {
 
 			// Joining the call needs to be done once the participant identifier
 			// has been set, which is done once the conversation has been
-			// fetched.
-			this.joinCall()
+			// fetched. MediaSettings are called to set up audio and video devices
+			// and also to give a consent to recording, if set up
+			emit('talk:media-settings:show')
 
 			// FIXME The participant will not be updated with the server data
 			// when the conversation is got again (as "addParticipantOnce" is
@@ -152,14 +160,6 @@ export default {
 				// instead.
 				this.fetchCurrentConversationIntervalId = window.setInterval(this.fetchCurrentConversation, 30000)
 			}
-		},
-
-		async joinCall() {
-			await this.$store.dispatch('joinCall', {
-				token: this.token,
-				participantIdentifier: this.$store.getters.getParticipantIdentifier(),
-				silent: false,
-			})
 		},
 
 		async fetchCurrentConversation() {
@@ -215,24 +215,6 @@ export default {
 
 	/* Unset conflicting rules from guest.css for the sidebar. */
 	text-align: left;
-}
-
-.slide-right-leave-active,
-.slide-right-enter-active {
-	transition-duration: var(--animation-quick);
-	transition-property: min-width, max-width;
-}
-
-.slide-right-enter-to,
-.slide-right-leave {
-	min-width: 300px;
-	max-width: 500px;
-}
-
-.slide-right-enter,
-.slide-right-leave-to {
-	min-width: 0 !important;
-	max-width: 0 !important;
 }
 
 #talk-sidebar > .emptycontent {

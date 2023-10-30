@@ -45,35 +45,15 @@ use Symfony\Component\Console\Input\ArgvInput;
 use Symfony\Component\Console\Input\InputDefinition;
 
 trait TRoomCommand {
-	/** @var Manager */
-	protected $manager;
-
-	/** @var RoomService */
-	protected $roomService;
-
-	/** @var ParticipantService */
-	protected $participantService;
-
-	/** @var IUserManager */
-	protected $userManager;
-
-	/** @var IGroupManager */
-	protected $groupManager;
 
 	public function __construct(
-		Manager $manager,
-		RoomService $roomService,
-		ParticipantService $participantService,
-		IUserManager $userManager,
-		IGroupManager $groupManager,
+		protected Manager $manager,
+		protected RoomService $roomService,
+		protected ParticipantService $participantService,
+		protected IUserManager $userManager,
+		protected IGroupManager $groupManager,
 	) {
 		parent::__construct();
-
-		$this->manager = $manager;
-		$this->roomService = $roomService;
-		$this->participantService = $participantService;
-		$this->userManager = $userManager;
-		$this->groupManager = $groupManager;
 	}
 
 	/**
@@ -263,6 +243,7 @@ trait TRoomCommand {
 			return;
 		}
 
+		/** @var array<string, array{actorType: string, actorId: string, displayName: string}> $participants */
 		$participants = [];
 		foreach ($userIds as $userId) {
 			if ($userId === MatterbridgeManager::BRIDGE_BOT_USERID) {
@@ -288,7 +269,7 @@ trait TRoomCommand {
 				// we expect the user not to be a participant yet
 			}
 
-			$participants[] = [
+			$participants[$user->getUID()] = [
 				'actorType' => Attendee::ACTOR_USERS,
 				'actorId' => $user->getUID(),
 				'displayName' => $user->getDisplayName(),

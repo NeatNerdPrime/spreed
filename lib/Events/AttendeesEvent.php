@@ -26,16 +26,15 @@ namespace OCA\Talk\Events;
 use OCA\Talk\Model\Attendee;
 use OCA\Talk\Room;
 
-class AttendeesEvent extends RoomEvent {
-	/** @var Attendee[] */
-	protected array $attendees;
-
+abstract class AttendeesEvent extends RoomEvent {
+	/**
+	 * @param Attendee[] $attendees
+	 */
 	public function __construct(
 		Room $room,
-		array $attendees,
+		protected array $attendees,
 	) {
 		parent::__construct($room);
-		$this->attendees = $attendees;
 	}
 
 	/**

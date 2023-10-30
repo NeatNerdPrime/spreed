@@ -19,9 +19,12 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  *
  */
+import Hex from 'crypto-js/enc-hex.js'
+import SHA1 from 'crypto-js/sha1.js'
 import Vue from 'vue'
 
 import { showError } from '@nextcloud/dialogs'
+import { emit } from '@nextcloud/event-bus'
 import { generateUrl } from '@nextcloud/router'
 
 import { PARTICIPANT } from '../constants.js'
@@ -43,13 +46,19 @@ import {
 	removeAllPermissionsFromParticipant,
 	setPermissions,
 	setTyping,
+	fetchParticipants,
 } from '../services/participantsService.js'
 import SessionStorage from '../services/SessionStorage.js'
+import { talkBroadcastChannel } from '../services/talkBroadcastChannel.js'
+import { useGuestNameStore } from '../stores/guestName.js'
+import CancelableRequest from '../utils/cancelableRequest.js'
 
 const state = {
 	attendees: {
 	},
 	peers: {
+	},
+	phones: {
 	},
 	inCall: {
 	},
@@ -57,6 +66,14 @@ const state = {
 	},
 	typing: {
 	},
+	speaking: {
+	},
+	/**
+	 * Stores the cancel function returned by `cancelableFetchParticipants`,
+	 * which allows to cancel the previous request for participants
+	 * when quickly switching to a new conversation.
+	 */
+	cancelFetchParticipants: null,
 }
 
 const getters = {
@@ -139,6 +156,22 @@ const getters = {
 	},
 
 	/**
+	 * Gets the speaking information for the participant.
+	 *
+	 * @param {object} state - the state object.
+	 * param {string} token - the conversation token.
+	 * param {number} attendeeId - attendee's ID for the participant in conversation.
+	 * @return {object|undefined}
+	 */
+	getParticipantSpeakingInformation: (state) => (token, attendeeId) => {
+		if (!state.speaking[token]) {
+			return undefined
+		}
+
+		return state.speaking[token][attendeeId]
+	},
+
+	/**
 	 * Replaces the legacy getParticipant getter. Returns a callback function in which you can
 	 * pass in the token and attendeeId as arguments to get the participant object.
 	 *
@@ -182,7 +215,7 @@ const getters = {
 				&& state.attendees[token][attendeeId].actorId === participantIdentifier.actorId) {
 				foundAttendee = attendeeId
 			}
-			if (participantIdentifier.sessionId && state.attendees[token][attendeeId].sessionId === participantIdentifier.sessionId) {
+			if (participantIdentifier.sessionId && state.attendees[token][attendeeId].sessionIds.includes(participantIdentifier.sessionId)) {
 				foundAttendee = attendeeId
 			}
 		})
@@ -216,6 +249,14 @@ const getters = {
 		}
 
 		return {}
+	},
+
+	getPhoneStatus: (state) => (callId) => {
+		return state.phones[callId]?.state?.status
+	},
+
+	getPhoneMute: (state) => (callId) => {
+		return state.phones[callId]?.mute
 	},
 
 	participantsInCall: (state) => (token) => {
@@ -322,6 +363,56 @@ const mutations = {
 	},
 
 	/**
+	 * Sets the speaking status of a participant in a conversation / call.
+	 *
+	 * Note that "updateParticipant" should not be called to add a "speaking"
+	 * property to an existing participant, as the participant would be reset
+	 * when the participants are purged whenever they are fetched again.
+	 * Similarly, "addParticipant" can not be called either to add a participant
+	 * if it was not fetched yet but the call model reported it as being
+	 * speaking, as the attendeeId would be unknown.
+	 *
+	 * @param {object} state - current store state.
+	 * @param {object} data - the wrapping object.
+	 * @param {string} data.token - the conversation token participant is speaking in.
+	 * @param {string} data.attendeeId - the attendee ID of the participant in conversation.
+	 * @param {boolean} data.speaking - whether the participant is speaking or not
+	 */
+	setSpeaking(state, { token, attendeeId, speaking }) {
+		// create a dummy object for current call
+		if (!state.speaking[token]) {
+			Vue.set(state.speaking, token, {})
+		}
+		if (!state.speaking[token][attendeeId]) {
+			Vue.set(state.speaking[token], attendeeId, { speaking: null, lastTimestamp: 0, totalCountedTime: 0 })
+		}
+
+		const currentTimestamp = Date.now()
+		const currentSpeakingState = state.speaking[token][attendeeId].speaking
+
+		if (!currentSpeakingState && speaking) {
+			state.speaking[token][attendeeId].speaking = true
+			state.speaking[token][attendeeId].lastTimestamp = currentTimestamp
+		} else if (currentSpeakingState && !speaking) {
+			// when speaking has stopped, update the total talking time
+			state.speaking[token][attendeeId].speaking = false
+			state.speaking[token][attendeeId].totalCountedTime += (currentTimestamp - state.speaking[token][attendeeId].lastTimestamp)
+		}
+	},
+
+	/**
+	 * Purge the speaking information for recent call when local participant leaves call
+	 * (including cases when the call ends for everyone).
+	 *
+	 * @param {object} state - current store state.
+	 * @param {object} data - the wrapping object.
+	 * @param {string} data.token - the conversation token.
+	 */
+	purgeSpeakingStore(state, { token }) {
+		Vue.delete(state.speaking, token)
+	},
+
+	/**
 	 * Purge a given conversation from the previously added participants.
 	 *
 	 * @param {object} state - current store state.
@@ -344,6 +435,28 @@ const mutations = {
 		if (state.peers[token]) {
 			Vue.delete(state.peers, token)
 		}
+	},
+
+	setCancelFetchParticipants(state, cancelFunction) {
+		state.cancelFetchParticipants = cancelFunction
+	},
+
+	setPhoneState(state, { callid, value = {} }) {
+		if (!state.phones[callid]) {
+			Vue.set(state.phones, callid, { state: null, mute: 0 })
+		}
+		Vue.set(state.phones[callid], 'state', value)
+	},
+
+	setPhoneMute(state, { callid, value }) {
+		if (!state.phones[callid]) {
+			Vue.set(state.phones, callid, { state: null, mute: 0 })
+		}
+		Vue.set(state.phones[callid], 'mute', value)
+	},
+
+	deletePhoneState(state, callid) {
+		Vue.delete(state.phones, callid)
 	},
 }
 
@@ -467,7 +580,82 @@ const actions = {
 		commit('updateParticipant', { token, attendeeId: attendee.attendeeId, updatedData })
 	},
 
-	async joinCall({ commit, getters }, { token, participantIdentifier, flags, silent }) {
+	/**
+	 * Fetches participants that belong to a particular conversation
+	 * specified with its token.
+	 *
+	 * @param {object} context default store context;
+	 * @param {object} data the wrapping object;
+	 * @param {string} data.token the conversation token;
+	 * @return {object|null}
+	 */
+	async fetchParticipants(context, { token }) {
+		const guestNameStore = useGuestNameStore()
+		// Cancel a previous request
+		context.dispatch('cancelFetchParticipants')
+		// Get a new cancelable request function and cancel function pair
+		const { request, cancel } = CancelableRequest(fetchParticipants)
+		// Assign the new cancel function to our data value
+		context.commit('setCancelFetchParticipants', cancel)
+
+		try {
+			const response = await request(token)
+			context.dispatch('purgeParticipantsStore', token)
+
+			const hasUserStatuses = !!response.headers['x-nextcloud-has-user-statuses']
+
+			response.data.ocs.data.forEach(participant => {
+				context.dispatch('addParticipant', { token, participant })
+
+				if (participant.participantType === PARTICIPANT.TYPE.GUEST
+					|| participant.participantType === PARTICIPANT.TYPE.GUEST_MODERATOR) {
+					guestNameStore.addGuestName({
+						token,
+						actorId: Hex.stringify(SHA1(participant.sessionIds[0])),
+						actorDisplayName: participant.displayName,
+					}, { noUpdate: false })
+				} else if (participant.actorType === 'users' && hasUserStatuses) {
+					emit('user_status:status.updated', {
+						status: participant.status,
+						message: participant.statusMessage,
+						icon: participant.statusIcon,
+						clearAt: participant.statusClearAt,
+						userId: participant.actorId,
+					})
+				}
+			})
+
+			// Discard current cancel function
+			context.commit('setCancelFetchParticipants', null)
+
+			return response
+		} catch (exception) {
+			if (exception?.response?.status === 403) {
+				context.dispatch('fetchConversation', { token })
+			} else if (!CancelableRequest.isCancel(exception)) {
+				console.error(exception)
+				showError(t('spreed', 'An error occurred while fetching the participants'))
+			}
+			return null
+		}
+	},
+
+	/**
+	 * Cancels a previously running "fetchParticipants" action if applicable.
+	 *
+	 * @param {object} context default store context;
+	 * @return {boolean} true if a request got cancelled, false otherwise
+	 */
+	cancelFetchParticipants(context) {
+		if (context.state.cancelFetchParticipants) {
+			context.state.cancelFetchParticipants('canceled')
+			context.commit('setCancelFetchParticipants', null)
+			return true
+		}
+		return false
+	},
+
+	async joinCall({ commit, getters }, { token, participantIdentifier, flags, silent, recordingConsent }) {
 		if (!participantIdentifier?.sessionId) {
 			console.error('Trying to join call without sessionId')
 			return
@@ -485,7 +673,7 @@ const actions = {
 			flags,
 		})
 
-		const actualFlags = await joinCall(token, flags, silent)
+		const actualFlags = await joinCall(token, flags, silent, recordingConsent)
 
 		const updatedData = {
 			inCall: actualFlags,
@@ -672,6 +860,7 @@ const actions = {
 		await removeCurrentUserFromConversation(token)
 		// If successful, deletes the conversation from the store
 		await context.dispatch('deleteConversation', token)
+		talkBroadcastChannel.postMessage({ message: 'force-fetch-all-conversations' })
 	},
 
 	/**
@@ -749,6 +938,45 @@ const actions = {
 			}, 15000)
 			context.commit('setTyping', { token, sessionId, typing: true, expirationTimeout })
 		}
+	},
+
+	setSpeaking(context, { token, attendeeId, speaking }) {
+		context.commit('setSpeaking', { token, attendeeId, speaking })
+	},
+
+	purgeSpeakingStore(context, { token }) {
+		context.commit('purgeSpeakingStore', { token })
+	},
+
+	processDialOutAnswer(context, { callid }) {
+		context.commit('setPhoneState', { callid })
+	},
+
+	processTransientCallStatus(context, { value }) {
+		context.commit('setPhoneState', { callid: value.callid, value })
+
+		if (value.status === 'cleared' || value.status === 'rejected') {
+			setTimeout(() => {
+				context.commit('deletePhoneState', value.callid)
+			}, 5000)
+		}
+	},
+
+	addPhonesStates(context, { phoneStates }) {
+		Object.values(phoneStates).forEach(phoneState => {
+			context.commit('setPhoneState', {
+				callid: phoneState.callid,
+				value: phoneState
+			})
+		})
+	},
+
+	deletePhoneState(context, { callid }) {
+		context.commit('deletePhoneState', callid)
+	},
+
+	setPhoneMute(context, { callid, value }) {
+		context.commit('setPhoneMute', { callid, value })
 	},
 }
 

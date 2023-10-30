@@ -27,13 +27,13 @@ namespace OCA\Talk\Migration;
 
 use Closure;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
-use Doctrine\DBAL\Types\Types;
 use OCA\Talk\Model\Attendee;
 use OCA\Talk\Participant;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\DB\Exception;
 use OCP\DB\ISchemaWrapper;
 use OCP\DB\QueryBuilder\IQueryBuilder;
+use OCP\DB\Types;
 use OCP\IDBConnection;
 use OCP\Migration\IOutput;
 use OCP\Migration\SimpleMigrationStep;
@@ -43,15 +43,11 @@ use OCP\Migration\SimpleMigrationStep;
  * email addresses, etc the sessions had to be decoupled from the participants
  */
 class Version10000Date20201015134000 extends SimpleMigrationStep {
-	protected IDBConnection $connection;
-	protected ITimeFactory $timeFactory;
 
 	public function __construct(
-		IDBConnection $connection,
-		ITimeFactory $timeFactory,
+		protected IDBConnection $connection,
+		protected ITimeFactory $timeFactory,
 	) {
-		$this->connection = $connection;
-		$this->timeFactory = $timeFactory;
 	}
 
 	/**

@@ -25,9 +25,17 @@ namespace OCA\Talk\Service;
 
 use InvalidArgumentException;
 use OCA\Talk\Config;
+use OCA\Talk\Events\ARoomModifiedEvent;
+use OCA\Talk\Events\BeforeLobbyModifiedEvent;
+use OCA\Talk\Events\BeforeRoomDeletedEvent;
+use OCA\Talk\Events\BeforeRoomModifiedEvent;
+use OCA\Talk\Events\LobbyModifiedEvent;
 use OCA\Talk\Events\ModifyLobbyEvent;
 use OCA\Talk\Events\ModifyRoomEvent;
+use OCA\Talk\Events\RoomDeletedEvent;
 use OCA\Talk\Events\RoomEvent;
+use OCA\Talk\Events\RoomModifiedEvent;
+use OCA\Talk\Events\RoomPasswordVerifyEvent;
 use OCA\Talk\Events\VerifyRoomPasswordEvent;
 use OCA\Talk\Exceptions\RoomNotFoundException;
 use OCA\Talk\Manager;
@@ -50,36 +58,18 @@ use OCP\Security\IHasher;
 use OCP\Share\IManager as IShareManager;
 
 class RoomService {
-	protected Manager $manager;
-	protected ParticipantService $participantService;
-	protected IDBConnection $db;
-	protected ITimeFactory $timeFactory;
-	protected IShareManager $shareManager;
-	protected Config $config;
-	protected IHasher $hasher;
-	protected IEventDispatcher $dispatcher;
-	protected IJobList $jobList;
 
 	public function __construct(
-		Manager $manager,
-		ParticipantService $participantService,
-		IDBConnection $db,
-		ITimeFactory $timeFactory,
-		IShareManager $shareManager,
-		Config $config,
-		IHasher $hasher,
-		IEventDispatcher $dispatcher,
-		IJobList $jobList,
+		protected Manager $manager,
+		protected ParticipantService $participantService,
+		protected IDBConnection $db,
+		protected ITimeFactory $timeFactory,
+		protected IShareManager $shareManager,
+		protected Config $config,
+		protected IHasher $hasher,
+		protected IEventDispatcher $dispatcher,
+		protected IJobList $jobList,
 	) {
-		$this->manager = $manager;
-		$this->participantService = $participantService;
-		$this->db = $db;
-		$this->timeFactory = $timeFactory;
-		$this->shareManager = $shareManager;
-		$this->config = $config;
-		$this->hasher = $hasher;
-		$this->dispatcher = $dispatcher;
-		$this->jobList = $jobList;
 	}
 
 	/**
@@ -146,6 +136,7 @@ class RoomService {
 			Room::TYPE_GROUP,
 			Room::TYPE_PUBLIC,
 			Room::TYPE_CHANGELOG,
+			Room::TYPE_NOTE_TO_SELF,
 		], true)) {
 			throw new InvalidArgumentException('type');
 		}
@@ -188,14 +179,20 @@ class RoomService {
 			return false;
 		}
 
+		if ($room->getType() === Room::TYPE_NOTE_TO_SELF) {
+			return false;
+		}
+
 		if ($room->getObjectType() === BreakoutRoom::PARENT_OBJECT_TYPE) {
 			// Do not allow manual changing the permissions in breakout rooms
 			return false;
 		}
 
 		if ($level === 'default') {
+			$property = ARoomModifiedEvent::PROPERTY_DEFAULT_PERMISSIONS;
 			$oldPermissions = $room->getDefaultPermissions();
 		} elseif ($level === 'call') {
+			$property = ARoomModifiedEvent::PROPERTY_CALL_PERMISSIONS;
 			$oldPermissions = $room->getCallPermissions();
 		} else {
 			return false;
@@ -218,6 +215,8 @@ class RoomService {
 			return false;
 		}
 
+		$event = new BeforeRoomModifiedEvent($room, $property, $newPermissions, $oldPermissions);
+		$this->dispatcher->dispatchTyped($event);
 		$event = new ModifyRoomEvent($room, $level . 'Permissions', $newPermissions, $oldPermissions);
 		$this->dispatcher->dispatch(Room::EVENT_BEFORE_PERMISSIONS_SET, $event);
 
@@ -240,6 +239,8 @@ class RoomService {
 		}
 
 		$this->dispatcher->dispatch(Room::EVENT_AFTER_PERMISSIONS_SET, $event);
+		$event = new RoomModifiedEvent($room, $property, $newPermissions, $oldPermissions);
+		$this->dispatcher->dispatchTyped($event);
 
 		return true;
 	}
@@ -267,6 +268,8 @@ class RoomService {
 			return false;
 		}
 
+		$event = new BeforeRoomModifiedEvent($room, ARoomModifiedEvent::PROPERTY_SIP_ENABLED, $newSipEnabled, $oldSipEnabled);
+		$this->dispatcher->dispatchTyped($event);
 		$event = new ModifyRoomEvent($room, 'sipEnabled', $newSipEnabled, $oldSipEnabled);
 		$this->dispatcher->dispatch(Room::EVENT_BEFORE_SIP_ENABLED_SET, $event);
 
@@ -279,9 +282,66 @@ class RoomService {
 		$room->setSIPEnabled($newSipEnabled);
 
 		$this->dispatcher->dispatch(Room::EVENT_AFTER_SIP_ENABLED_SET, $event);
+		$event = new RoomModifiedEvent($room, ARoomModifiedEvent::PROPERTY_SIP_ENABLED, $newSipEnabled, $oldSipEnabled);
+		$this->dispatcher->dispatchTyped($event);
 
 		return true;
 	}
+
+	/**
+	 * @psalm-param RecordingService::CONSENT_REQUIRED_* $recordingConsent
+	 * @throws \InvalidArgumentException When the room has an active call or the value is invalid
+	 */
+	public function setRecordingConsent(Room $room, int $recordingConsent, bool $allowUpdatingBreakoutRooms = false): void {
+		$oldRecordingConsent = $room->getRecordingConsent();
+
+		if ($recordingConsent === $oldRecordingConsent) {
+			return;
+		}
+
+		if (!in_array($recordingConsent, [RecordingService::CONSENT_REQUIRED_NO, RecordingService::CONSENT_REQUIRED_YES], true)) {
+			throw new InvalidArgumentException('value');
+		}
+
+		if ($recordingConsent !== RecordingService::CONSENT_REQUIRED_NO && $room->getCallFlag() !== Participant::FLAG_DISCONNECTED) {
+			throw new InvalidArgumentException('call');
+		}
+
+		if (!$allowUpdatingBreakoutRooms && $room->getObjectType() === BreakoutRoom::PARENT_OBJECT_TYPE) {
+			throw new InvalidArgumentException('breakout-room');
+		}
+
+		if ($room->getBreakoutRoomStatus() !== BreakoutRoom::STATUS_STOPPED) {
+			throw new InvalidArgumentException('breakout-room');
+		}
+
+		$event = new BeforeRoomModifiedEvent($room, ARoomModifiedEvent::PROPERTY_RECORDING_CONSENT, $recordingConsent, $oldRecordingConsent);
+		$this->dispatcher->dispatchTyped($event);
+
+		$now = $this->timeFactory->getDateTime();
+
+		$update = $this->db->getQueryBuilder();
+		$update->update('talk_rooms')
+			->set('recording_consent', $update->createNamedParameter($recordingConsent, IQueryBuilder::PARAM_INT))
+			->set('last_activity', $update->createNamedParameter($now, IQueryBuilder::PARAM_DATE))
+			->where($update->expr()->eq('id', $update->createNamedParameter($room->getId(), IQueryBuilder::PARAM_INT)));
+		$update->executeStatement();
+
+		$room->setRecordingConsent($recordingConsent);
+		$room->setLastActivity($now);
+
+		$event = new RoomModifiedEvent($room, ARoomModifiedEvent::PROPERTY_RECORDING_CONSENT, $recordingConsent, $oldRecordingConsent);
+		$this->dispatcher->dispatchTyped($event);
+
+		// Update the recording consent for all rooms
+		if ($room->getBreakoutRoomMode() !== BreakoutRoom::MODE_NOT_CONFIGURED) {
+			$breakoutRooms = $this->manager->getMultipleRoomsByObject(BreakoutRoom::PARENT_OBJECT_TYPE, $room->getToken());
+			foreach ($breakoutRooms as $breakoutRoom) {
+				$this->setRecordingConsent($breakoutRoom, $recordingConsent, true);
+			}
+		}
+	}
+
 	/**
 	 * @param string $newName Currently it is only allowed to rename: self::TYPE_GROUP, self::TYPE_PUBLIC
 	 * @param string|null $oldName
@@ -293,6 +353,8 @@ class RoomService {
 			return false;
 		}
 
+		$event = new BeforeRoomModifiedEvent($room, ARoomModifiedEvent::PROPERTY_NAME, $newName, $oldName);
+		$this->dispatcher->dispatchTyped($event);
 		$event = new ModifyRoomEvent($room, 'name', $newName, $oldName);
 		$this->dispatcher->dispatch(Room::EVENT_BEFORE_NAME_SET, $event);
 
@@ -305,6 +367,8 @@ class RoomService {
 		$room->setName($newName);
 
 		$this->dispatcher->dispatch(Room::EVENT_AFTER_NAME_SET, $event);
+		$event = new RoomModifiedEvent($room, ARoomModifiedEvent::PROPERTY_NAME, $newName, $oldName);
+		$this->dispatcher->dispatchTyped($event);
 
 		return true;
 	}
@@ -335,9 +399,11 @@ class RoomService {
 			return false;
 		}
 
-		$event = new ModifyLobbyEvent($room, 'lobby', $newState, $oldState, $dateTime, $timerReached);
+		$legacyEvent = new ModifyLobbyEvent($room, 'lobby', $newState, $oldState, $dateTime, $timerReached);
 		if ($dispatchEvents) {
-			$this->dispatcher->dispatch(Room::EVENT_BEFORE_LOBBY_STATE_SET, $event);
+			$event = new BeforeLobbyModifiedEvent($room, $newState, $oldState, $dateTime, $timerReached);
+			$this->dispatcher->dispatchTyped($event);
+			$this->dispatcher->dispatch(Room::EVENT_BEFORE_LOBBY_STATE_SET, $legacyEvent);
 		}
 
 		$update = $this->db->getQueryBuilder();
@@ -351,7 +417,9 @@ class RoomService {
 		$room->setLobbyTimer($dateTime);
 
 		if ($dispatchEvents) {
-			$this->dispatcher->dispatch(Room::EVENT_AFTER_LOBBY_STATE_SET, $event);
+			$this->dispatcher->dispatch(Room::EVENT_AFTER_LOBBY_STATE_SET, $legacyEvent);
+			$event = new LobbyModifiedEvent($room, $newState, $oldState, $dateTime, $timerReached);
+			$this->dispatcher->dispatchTyped($event);
 		}
 
 		return true;
@@ -362,6 +430,9 @@ class RoomService {
 			return false;
 		}
 
+		$oldAvatar = $room->getAvatar();
+		$event = new BeforeRoomModifiedEvent($room, ARoomModifiedEvent::PROPERTY_AVATAR, $avatar, $oldAvatar);
+		$this->dispatcher->dispatchTyped($event);
 		$event = new ModifyRoomEvent($room, 'avatar', $avatar, $room->getAvatar());
 		$this->dispatcher->dispatch(Room::EVENT_BEFORE_AVATAR_SET, $event);
 
@@ -374,6 +445,8 @@ class RoomService {
 		$room->setAvatar($avatar);
 
 		$this->dispatcher->dispatch(Room::EVENT_AFTER_AVATAR_SET, $event);
+		$event = new RoomModifiedEvent($room, ARoomModifiedEvent::PROPERTY_AVATAR, $avatar, $oldAvatar);
+		$this->dispatcher->dispatchTyped($event);
 		return true;
 	}
 
@@ -396,6 +469,8 @@ class RoomService {
 		}
 
 		$oldStatus = $room->getCallRecording();
+		$event = new BeforeRoomModifiedEvent($room, ARoomModifiedEvent::PROPERTY_CALL_RECORDING, $status, $oldStatus, $participant);
+		$this->dispatcher->dispatchTyped($event);
 		$event = new ModifyRoomEvent($room, 'callRecording', $status, $oldStatus, $participant);
 		$this->dispatcher->dispatch(Room::EVENT_BEFORE_SET_CALL_RECORDING, $event);
 
@@ -408,6 +483,8 @@ class RoomService {
 		$room->setCallRecording($status);
 
 		$this->dispatcher->dispatch(Room::EVENT_AFTER_SET_CALL_RECORDING, $event);
+		$event = new RoomModifiedEvent($room, ARoomModifiedEvent::PROPERTY_CALL_RECORDING, $status, $oldStatus, $participant);
+		$this->dispatcher->dispatchTyped($event);
 	}
 
 	/**
@@ -429,6 +506,10 @@ class RoomService {
 			return false;
 		}
 
+		if ($room->getType() === Room::TYPE_NOTE_TO_SELF) {
+			return false;
+		}
+
 		if (!in_array($newType, [Room::TYPE_GROUP, Room::TYPE_PUBLIC, Room::TYPE_ONE_TO_ONE_FORMER], true)) {
 			return false;
 		}
@@ -447,6 +528,8 @@ class RoomService {
 
 		$oldType = $room->getType();
 
+		$event = new BeforeRoomModifiedEvent($room, ARoomModifiedEvent::PROPERTY_TYPE, $newType, $oldType);
+		$this->dispatcher->dispatchTyped($event);
 		$event = new ModifyRoomEvent($room, 'type', $newType, $oldType);
 		$this->dispatcher->dispatch(Room::EVENT_BEFORE_TYPE_SET, $event);
 
@@ -468,6 +551,8 @@ class RoomService {
 		}
 
 		$this->dispatcher->dispatch(Room::EVENT_AFTER_TYPE_SET, $event);
+		$event = new RoomModifiedEvent($room, ARoomModifiedEvent::PROPERTY_TYPE, $newType, $oldType);
+		$this->dispatcher->dispatchTyped($event);
 
 		return true;
 	}
@@ -497,6 +582,8 @@ class RoomService {
 			return false;
 		}
 
+		$event = new BeforeRoomModifiedEvent($room, ARoomModifiedEvent::PROPERTY_READ_ONLY, $newState, $oldState);
+		$this->dispatcher->dispatchTyped($event);
 		$event = new ModifyRoomEvent($room, 'readOnly', $newState, $oldState);
 		$this->dispatcher->dispatch(Room::EVENT_BEFORE_READONLY_SET, $event);
 
@@ -509,6 +596,8 @@ class RoomService {
 		$room->setReadOnly($newState);
 
 		$this->dispatcher->dispatch(Room::EVENT_AFTER_READONLY_SET, $event);
+		$event = new RoomModifiedEvent($room, ARoomModifiedEvent::PROPERTY_READ_ONLY, $newState, $oldState);
+		$this->dispatcher->dispatchTyped($event);
 
 		return true;
 	}
@@ -542,6 +631,8 @@ class RoomService {
 			return false;
 		}
 
+		$event = new BeforeRoomModifiedEvent($room, ARoomModifiedEvent::PROPERTY_LISTABLE, $newState, $oldState);
+		$this->dispatcher->dispatchTyped($event);
 		$event = new ModifyRoomEvent($room, 'listable', $newState, $oldState);
 		$this->dispatcher->dispatch(Room::EVENT_BEFORE_LISTABLE_SET, $event);
 
@@ -554,6 +645,8 @@ class RoomService {
 		$room->setListable($newState);
 
 		$this->dispatcher->dispatch(Room::EVENT_AFTER_LISTABLE_SET, $event);
+		$event = new RoomModifiedEvent($room, ARoomModifiedEvent::PROPERTY_LISTABLE, $newState, $oldState);
+		$this->dispatcher->dispatchTyped($event);
 
 		return true;
 	}
@@ -593,6 +686,8 @@ class RoomService {
 			return false;
 		}
 
+		$event = new BeforeRoomModifiedEvent($room, ARoomModifiedEvent::PROPERTY_DESCRIPTION, $description, $oldDescription);
+		$this->dispatcher->dispatchTyped($event);
 		$event = new ModifyRoomEvent($room, 'description', $description, $oldDescription);
 		$this->dispatcher->dispatch(Room::EVENT_BEFORE_DESCRIPTION_SET, $event);
 
@@ -605,6 +700,8 @@ class RoomService {
 		$room->setDescription($description);
 
 		$this->dispatcher->dispatch(Room::EVENT_AFTER_DESCRIPTION_SET, $event);
+		$event = new RoomModifiedEvent($room, ARoomModifiedEvent::PROPERTY_DESCRIPTION, $description, $oldDescription);
+		$this->dispatcher->dispatchTyped($event);
 
 		return true;
 	}
@@ -630,6 +727,8 @@ class RoomService {
 
 		$hash = $password !== '' ? $this->hasher->hash($password) : '';
 
+		$event = new BeforeRoomModifiedEvent($room, ARoomModifiedEvent::PROPERTY_PASSWORD, $password);
+		$this->dispatcher->dispatchTyped($event);
 		$event = new ModifyRoomEvent($room, 'password', $password);
 		$this->dispatcher->dispatch(Room::EVENT_BEFORE_PASSWORD_SET, $event);
 
@@ -642,18 +741,31 @@ class RoomService {
 		$room->setPassword($hash);
 
 		$this->dispatcher->dispatch(Room::EVENT_AFTER_PASSWORD_SET, $event);
+		$event = new RoomModifiedEvent($room, ARoomModifiedEvent::PROPERTY_PASSWORD, $password);
+		$this->dispatcher->dispatchTyped($event);
 
 		return true;
 	}
 
+	/**
+	 * @return array{result: ?bool, url: string}
+	 */
 	public function verifyPassword(Room $room, string $password): array {
-		$event = new VerifyRoomPasswordEvent($room, $password);
-		$this->dispatcher->dispatch(Room::EVENT_PASSWORD_VERIFY, $event);
+		$event = new RoomPasswordVerifyEvent($room, $password);
+		$this->dispatcher->dispatchTyped($event);
 
+		$legacyEvent = new VerifyRoomPasswordEvent($room, $password);
 		if ($event->isPasswordValid() !== null) {
+			$legacyEvent->setIsPasswordValid($event->isPasswordValid());
+		}
+		$legacyEvent->setRedirectUrl($event->getRedirectUrl());
+
+		$this->dispatcher->dispatch(Room::EVENT_PASSWORD_VERIFY, $legacyEvent);
+
+		if ($legacyEvent->isPasswordValid() !== null) {
 			return [
-				'result' => $event->isPasswordValid(),
-				'url' => $event->getRedirectUrl(),
+				'result' => $legacyEvent->isPasswordValid(),
+				'url' => $legacyEvent->getRedirectUrl(),
 			];
 		}
 
@@ -671,6 +783,9 @@ class RoomService {
 			throw new \InvalidArgumentException('room');
 		}
 
+		$oldExpiration = $room->getMessageExpiration();
+		$event = new BeforeRoomModifiedEvent($room, ARoomModifiedEvent::PROPERTY_MESSAGE_EXPIRATION, $seconds, $oldExpiration);
+		$this->dispatcher->dispatchTyped($event);
 		$event = new ModifyRoomEvent($room, 'messageExpiration', $seconds);
 		$this->dispatcher->dispatch(Room::EVENT_BEFORE_SET_MESSAGE_EXPIRATION, $event);
 
@@ -683,6 +798,8 @@ class RoomService {
 		$room->setMessageExpiration($seconds);
 
 		$this->dispatcher->dispatch(Room::EVENT_AFTER_SET_MESSAGE_EXPIRATION, $event);
+		$event = new RoomModifiedEvent($room, ARoomModifiedEvent::PROPERTY_MESSAGE_EXPIRATION, $seconds, $oldExpiration);
+		$this->dispatcher->dispatchTyped($event);
 	}
 
 	public function setBreakoutRoomMode(Room $room, int $mode): bool {
@@ -695,6 +812,9 @@ class RoomService {
 			return false;
 		}
 
+		$oldMode = $room->getBreakoutRoomMode();
+		$event = new BeforeRoomModifiedEvent($room, ARoomModifiedEvent::PROPERTY_BREAKOUT_ROOM_MODE, $mode, $oldMode);
+		$this->dispatcher->dispatchTyped($event);
 		$event = new ModifyRoomEvent($room, 'breakoutRoomMode', $mode);
 		$this->dispatcher->dispatch(Room::EVENT_BEFORE_SET_BREAKOUT_ROOM_MODE, $event);
 
@@ -707,6 +827,8 @@ class RoomService {
 		$room->setBreakoutRoomMode($mode);
 
 		$this->dispatcher->dispatch(Room::EVENT_AFTER_SET_BREAKOUT_ROOM_MODE, $event);
+		$event = new RoomModifiedEvent($room, ARoomModifiedEvent::PROPERTY_BREAKOUT_ROOM_MODE, $mode, $oldMode);
+		$this->dispatcher->dispatchTyped($event);
 
 		return true;
 	}
@@ -721,6 +843,9 @@ class RoomService {
 			return false;
 		}
 
+		$oldStatus = $room->getBreakoutRoomStatus();
+		$event = new BeforeRoomModifiedEvent($room, ARoomModifiedEvent::PROPERTY_BREAKOUT_ROOM_STATUS, $status, $oldStatus);
+		$this->dispatcher->dispatchTyped($event);
 		$event = new ModifyRoomEvent($room, 'breakoutRoomStatus', $status);
 		$this->dispatcher->dispatch(Room::EVENT_BEFORE_SET_BREAKOUT_ROOM_STATUS, $event);
 
@@ -733,6 +858,8 @@ class RoomService {
 		$room->setBreakoutRoomStatus($status);
 
 		$this->dispatcher->dispatch(Room::EVENT_AFTER_SET_BREAKOUT_ROOM_STATUS, $event);
+		$oldStatus = $room->getBreakoutRoomStatus();
+		$event = new RoomModifiedEvent($room, ARoomModifiedEvent::PROPERTY_BREAKOUT_ROOM_STATUS, $status, $oldStatus);
 
 		return true;
 	}
@@ -820,8 +947,10 @@ class RoomService {
 	}
 
 	public function deleteRoom(Room $room): void {
-		$event = new RoomEvent($room);
-		$this->dispatcher->dispatch(Room::EVENT_BEFORE_ROOM_DELETE, $event);
+		$event = new BeforeRoomDeletedEvent($room);
+		$this->dispatcher->dispatchTyped($event);
+		$legacyEvent = new RoomEvent($room);
+		$this->dispatcher->dispatch(Room::EVENT_BEFORE_ROOM_DELETE, $legacyEvent);
 
 		// Delete all breakout rooms when deleting a parent room
 		if ($room->getBreakoutRoomMode() !== BreakoutRoom::MODE_NOT_CONFIGURED) {
@@ -843,7 +972,9 @@ class RoomService {
 			->where($delete->expr()->eq('id', $delete->createNamedParameter($room->getId(), IQueryBuilder::PARAM_INT)));
 		$delete->executeStatement();
 
-		$this->dispatcher->dispatch(Room::EVENT_AFTER_ROOM_DELETE, $event);
+		$event = new RoomDeletedEvent($room);
+		$this->dispatcher->dispatchTyped($event);
+		$this->dispatcher->dispatch(Room::EVENT_AFTER_ROOM_DELETE, $legacyEvent);
 		if (class_exists(CriticalActionPerformedEvent::class)) {
 			$this->dispatcher->dispatchTyped(new CriticalActionPerformedEvent(
 				'Conversation "%s" deleted',

@@ -21,23 +21,21 @@
 
 <template>
 	<NcListItem ref="listItem"
-		:title="item.displayName"
+		:key="item.token"
+		:name="item.displayName"
+		class="conversation-item"
 		:class="{'unread-mention-conversation': item.unreadMention}"
-		:anchor-id="`conversation_${item.token}`"
+		:data-nav-id="`conversation_${item.token}`"
 		:actions-aria-label="t('spreed', 'Conversation actions')"
-		:active="isActive"
 		:to="to"
 		:bold="!!item.unreadMessages"
 		:counter-number="item.unreadMessages"
 		:counter-type="counterType"
 		@click="onClick">
 		<template #icon>
-			<ConversationIcon :item="item"
-				:hide-favorite="false"
-				:hide-call="false"
-				:disable-menu="true" />
+			<ConversationIcon :item="item" :hide-favorite="false" :hide-call="false" />
 		</template>
-		<template #subtitle>
+		<template #subname>
 			<strong v-if="item.unreadMessages"
 				class="subtitle">
 				{{ conversationInformation }}
@@ -180,6 +178,8 @@ export default {
 			},
 		},
 	},
+
+	emits: ['click'],
 
 	computed: {
 		counterType() {
@@ -326,14 +326,6 @@ export default {
 				}
 				: ''
 		},
-
-		isActive() {
-			if (!this.isSearchResult) {
-				return this.$store.getters.getToken() === this.to.params.token
-			} else {
-				return false
-			}
-		},
 	},
 
 	// TODO: move the implementation to @nextcloud-vue/NcListItem
@@ -342,7 +334,7 @@ export default {
 			immediate: true,
 			handler(value) {
 				this.$nextTick().then(() => {
-					const titleSpan = this.$refs.listItem?.$el?.querySelector('.line-one__title')
+					const titleSpan = this.$refs.listItem?.$el?.querySelector('.line-one__name')
 
 					if (titleSpan && titleSpan.offsetWidth < titleSpan.scrollWidth) {
 						titleSpan.setAttribute('title', value)
@@ -434,6 +426,7 @@ export default {
 			if (this.isSearchResult) {
 				this.$store.dispatch('addConversation', this.item)
 			}
+			this.$emit('click')
 		},
 
 		onActionClick() {
@@ -449,29 +442,18 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.subtitle {
-	font-weight: bold;
+.conversation-item {
+	padding-left: 2px;
+	padding-right: 2px;
 }
 
-:deep(.action-text__title) {
-	margin-left: 12px;
+.subtitle {
+	font-weight: bold;
 }
 
 .critical {
 	:deep(.action-button) {
 		color: var(--color-error) !important;
 	}
-}
-
-.scroller {
-	flex: 1 0;
-}
-
-.ellipsis {
-	text-overflow: ellipsis;
-}
-
-.forced-active {
-	background-color: var(--color-primary-element-light) !important //Overrides gray hover feedback;
 }
 </style>

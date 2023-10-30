@@ -26,27 +26,19 @@ namespace OCA\Talk\Events;
 use OCA\Talk\Participant;
 use OCA\Talk\Room;
 
+/**
+ * @deprecated Use {@see BeforeRoomModifiedEvent} and {@see RoomModifiedEvent} instead
+ */
 class ModifyRoomEvent extends RoomEvent {
-	protected string $parameter;
-	/** @var int|string|bool */
-	protected $newValue;
-	/** @var int|string|bool|null */
-	protected $oldValue;
-	protected ?Participant $actor;
-
 
 	public function __construct(
 		Room $room,
-		string $parameter,
-		$newValue,
-		$oldValue = null,
-		?Participant $actor = null,
+		protected string $parameter,
+		protected $newValue,
+		protected $oldValue = null,
+		protected ?Participant $actor = null,
 	) {
 		parent::__construct($room);
-		$this->parameter = $parameter;
-		$this->newValue = $newValue;
-		$this->oldValue = $oldValue;
-		$this->actor = $actor;
 	}
 
 	public function getParameter(): string {

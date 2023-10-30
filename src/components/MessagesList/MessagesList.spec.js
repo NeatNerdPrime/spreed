@@ -215,19 +215,22 @@ describe('MessagesList.vue', () => {
 			// using attributes to access v-bind props
 			expect(group.attributes('actorid')).toBe('alice')
 			expect(group.attributes('actortype')).toBe(ATTENDEE.ACTOR_TYPE.USERS)
-			expect(group.attributes('dateseparator')).toBe('2 days ago, May 9, 2020')
 
 			group = groups.at(1)
 			expect(group.props('messages')).toStrictEqual([messages[1]])
 			expect(group.attributes('actorid')).toBe('alice')
 			expect(group.attributes('actortype')).toBe(ATTENDEE.ACTOR_TYPE.USERS)
-			expect(group.attributes('dateseparator')).toBe('Yesterday, May 10, 2020')
 
 			group = groups.at(2)
 			expect(group.props('messages')).toStrictEqual([messages[2]])
 			expect(group.attributes('actorid')).toBe('alice')
 			expect(group.attributes('actortype')).toBe(ATTENDEE.ACTOR_TYPE.USERS)
-			expect(group.attributes('dateseparator')).toBe('Today, May 11, 2020')
+
+			const dateSeparators = wrapper.findAll('.messages-group__date')
+			expect(dateSeparators).toHaveLength(3)
+			expect(dateSeparators.at(0).text()).toBe('2 days ago, May 9, 2020')
+			expect(dateSeparators.at(1).text()).toBe('Yesterday, May 10, 2020')
+			expect(dateSeparators.at(2).text()).toBe('Today, May 11, 2020')
 
 			expect(messagesListMock).toHaveBeenCalledWith(TOKEN)
 		})
@@ -270,7 +273,7 @@ describe('MessagesList.vue', () => {
 				},
 			})
 
-			const groups = wrapper.findAllComponents({ name: 'MessagesGroup' })
+			const groups = wrapper.findAllComponents({ ref: 'messagesGroup' })
 
 			expect(groups.exists()).toBe(true)
 
@@ -298,7 +301,7 @@ describe('MessagesList.vue', () => {
 				},
 			})
 
-			const groups = wrapper.findAllComponents({ name: 'MessagesGroup' })
+			const groups = wrapper.findAllComponents({ ref: 'messagesGroup' })
 
 			expect(groups.exists()).toBe(true)
 
@@ -409,66 +412,6 @@ describe('MessagesList.vue', () => {
 
 			const placeholder = wrapper.findAllComponents({ name: 'LoadingPlaceholder' })
 			expect(placeholder.exists()).toBe(true)
-		})
-
-		test('skips deleted messages when grouping', () => {
-			const messages = [{
-				id: 100,
-				token: TOKEN,
-				actorId: 'alice',
-				actorDisplayName: 'Alice',
-				actorType: ATTENDEE.ACTOR_TYPE.USERS,
-				message: 'hello',
-				messageType: 'comment',
-				messageParameters: {},
-				systemMessage: '',
-				timestamp: 100,
-				isReplyable: true,
-			}, {
-				id: 110,
-				token: TOKEN,
-				actorId: 'alice',
-				actorDisplayName: 'Alice',
-				actorType: ATTENDEE.ACTOR_TYPE.USERS,
-				message: 'deleted',
-				messageType: 'comment',
-				messageParameters: {},
-				systemMessage: 'message_deleted',
-				timestamp: 101,
-				isReplyable: true,
-			}, {
-				id: '120',
-				token: TOKEN,
-				actorId: 'alice',
-				actorDisplayName: 'Alice',
-				actorType: ATTENDEE.ACTOR_TYPE.USERS,
-				message: 'hello again',
-				messageType: 'comment',
-				messageParameters: {},
-				systemMessage: '',
-				timestamp: 102,
-				isReplyable: true,
-			}]
-
-			messagesListMock.mockReturnValue(messages)
-
-			const wrapper = shallowMount(MessagesList, {
-				localVue,
-				store,
-				propsData: {
-					token: TOKEN,
-					isChatScrolledToBottom: true,
-				},
-			})
-
-			const groups = wrapper.findAllComponents({ name: 'MessagesGroup' })
-
-			expect(groups.exists()).toBe(true)
-
-			const group = groups.at(0)
-			expect(group.props('messages')).toStrictEqual([messages[0], messages[2]])
-
-			expect(messagesListMock).toHaveBeenCalledWith(TOKEN)
 		})
 	})
 })

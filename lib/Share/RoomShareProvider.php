@@ -30,7 +30,7 @@ namespace OCA\Talk\Share;
 
 use OC\Files\Cache\Cache;
 use OCA\Talk\Events\AlreadySharedEvent;
-use OCA\Talk\Events\RoomEvent;
+use OCA\Talk\Events\BeforeDuplicateShareSentEvent;
 use OCA\Talk\Exceptions\ParticipantNotFoundException;
 use OCA\Talk\Exceptions\RoomNotFoundException;
 use OCA\Talk\Manager;
@@ -48,7 +48,6 @@ use OCP\Files\Node;
 use OCP\IDBConnection;
 use OCP\IL10N;
 use OCP\Security\ISecureRandom;
-use OCP\Server;
 use OCP\Share\Exceptions\GenericShareException;
 use OCP\Share\Exceptions\ShareNotFound;
 use OCP\Share\IManager as IShareManager;
@@ -73,40 +72,22 @@ class RoomShareProvider implements IShareProvider {
 	public const TALK_FOLDER = '/Talk';
 	public const TALK_FOLDER_PLACEHOLDER = '/{TALK_PLACEHOLDER}';
 
+	/** @deprecated */
 	public const EVENT_SHARE_FILE_AGAIN = self::class . '::shareFileAgain';
-
-	private IDBConnection $dbConnection;
-	private ISecureRandom $secureRandom;
-	private IShareManager $shareManager;
-	private IEventDispatcher $dispatcher;
-	private Manager $manager;
-	private ParticipantService $participantService;
-	protected ITimeFactory $timeFactory;
-	private IL10N $l;
-	private IMimeTypeLoader $mimeTypeLoader;
 
 	private CappedMemoryCache $sharesByIdCache;
 
 	public function __construct(
-		IDBConnection $connection,
-		ISecureRandom $secureRandom,
-		IShareManager $shareManager,
-		IEventDispatcher $dispatcher,
-		Manager $manager,
-		ParticipantService $participantService,
-		ITimeFactory $timeFactory,
-		IL10N $l,
-		IMimeTypeLoader $mimeTypeLoader,
+		private IDBConnection $dbConnection,
+		private ISecureRandom $secureRandom,
+		private IShareManager $shareManager,
+		private IEventDispatcher $dispatcher,
+		private Manager $manager,
+		private ParticipantService $participantService,
+		protected ITimeFactory $timeFactory,
+		private IL10N $l,
+		private IMimeTypeLoader $mimeTypeLoader,
 	) {
-		$this->dbConnection = $connection;
-		$this->secureRandom = $secureRandom;
-		$this->shareManager = $shareManager;
-		$this->dispatcher = $dispatcher;
-		$this->manager = $manager;
-		$this->participantService = $participantService;
-		$this->timeFactory = $timeFactory;
-		$this->l = $l;
-		$this->mimeTypeLoader = $mimeTypeLoader;
 		$this->sharesByIdCache = new CappedMemoryCache();
 	}
 
@@ -115,16 +96,6 @@ class RoomShareProvider implements IShareProvider {
 	 */
 	private function cleanSharesByIdCache(): void {
 		$this->sharesByIdCache = new CappedMemoryCache();
-	}
-
-	public static function register(IEventDispatcher $dispatcher): void {
-		$listener = static function (RoomEvent $event): void {
-			$room = $event->getRoom();
-
-			$roomShareProvider = Server::get(self::class);
-			$roomShareProvider->deleteInRoom($room->getToken());
-		};
-		$dispatcher->addListener(Room::EVENT_AFTER_ROOM_DELETE, $listener);
 	}
 
 	/**
@@ -172,6 +143,8 @@ class RoomShareProvider implements IShareProvider {
 			if ($existingShare->getSharedWith() === $share->getSharedWith()) {
 				// FIXME Should be moved away from GenericEvent as soon as OCP\Share20\IManager did move too
 				$this->dispatcher->dispatch(self::EVENT_SHARE_FILE_AGAIN, new AlreadySharedEvent($existingShare));
+				$event = new BeforeDuplicateShareSentEvent($existingShare);
+				$this->dispatcher->dispatchTyped($event);
 				throw new GenericShareException('Already shared', $this->l->t('Path is already shared with this room'), 403);
 			}
 		}

@@ -1,13 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<files psalm-version="5.11.0@c9b192ab8400fdaf04b2b13d110575adc879aa90">
+<files psalm-version="5.15.0@5c774aca4746caf3d239d9c8cadb9f882ca29352">
   <file src="lib/AppInfo/Application.php">
     <UndefinedClass>
       <code>BeforeTemplateRenderedEvent</code>
       <code>BeforeTemplateRenderedEvent</code>
     </UndefinedClass>
-    <UndefinedInterfaceMethod>
-      <code>getSettingsManager</code>
-    </UndefinedInterfaceMethod>
   </file>
   <file src="lib/BackgroundJob/CheckReferenceIdColumn.php">
     <UndefinedClass>
@@ -29,140 +26,10 @@
       <code>\OC_Util</code>
     </UndefinedClass>
   </file>
-  <file src="lib/Command/Command/Add.php">
-    <UndefinedClass>
-      <code>Base</code>
-    </UndefinedClass>
-  </file>
   <file src="lib/Command/Command/AddSamples.php">
-    <UndefinedClass>
-      <code>Base</code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Command/Command/Delete.php">
-    <UndefinedClass>
-      <code>Base</code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Command/Command/ListCommand.php">
-    <UndefinedClass>
-      <code>Base</code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Command/Command/Update.php">
-    <UndefinedClass>
-      <code>Base</code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Command/Developer/UpdateDocs.php">
-    <UndefinedClass>
-      <code>Base</code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Command/Monitor/Calls.php">
-    <UndefinedClass>
-      <code>Base</code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Command/Monitor/HasActiveCalls.php">
-    <UndefinedClass>
-      <code>Base</code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Command/Monitor/Room.php">
-    <UndefinedClass>
-      <code>Base</code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Command/Room/Add.php">
-    <UndefinedClass>
-      <code>Base</code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Command/Room/Create.php">
-    <UndefinedClass>
-      <code>Base</code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Command/Room/Delete.php">
-    <UndefinedClass>
-      <code>Base</code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Command/Room/Demote.php">
-    <UndefinedClass>
-      <code>Base</code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Command/Room/Promote.php">
-    <UndefinedClass>
-      <code>Base</code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Command/Room/Remove.php">
-    <UndefinedClass>
-      <code>Base</code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Command/Room/Update.php">
-    <UndefinedClass>
-      <code>Base</code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Command/Signaling/Add.php">
-    <UndefinedClass>
-      <code>Base</code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Command/Signaling/Delete.php">
-    <UndefinedClass>
-      <code>Base</code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Command/Signaling/ListCommand.php">
-    <UndefinedClass>
-      <code>Base</code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Command/Stun/Add.php">
-    <UndefinedClass>
-      <code>Base</code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Command/Stun/Delete.php">
-    <UndefinedClass>
-      <code>Base</code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Command/Stun/ListCommand.php">
-    <UndefinedClass>
-      <code>Base</code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Command/Turn/Add.php">
-    <UndefinedClass>
-      <code>Base</code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Command/Turn/Delete.php">
-    <UndefinedClass>
-      <code>Base</code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Command/Turn/ListCommand.php">
-    <UndefinedClass>
-      <code>Base</code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Command/User/Remove.php">
-    <UndefinedClass>
-      <code>Base</code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Command/User/TransferOwnership.php">
-    <UndefinedClass>
-      <code>Base</code>
-    </UndefinedClass>
+    <ForbiddenCode>
+      <code><![CDATA[shell_exec('which bc')]]></code>
+    </ForbiddenCode>
   </file>
   <file src="lib/Config.php">
     <NullArgument>
@@ -172,12 +39,6 @@
   <file src="lib/Controller/TempAvatarController.php">
     <UndefinedClass>
       <code>Filesystem</code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Files/TemplateLoader.php">
-    <UndefinedClass>
-      <code>LoadSidebar</code>
-      <code>LoadSidebar</code>
     </UndefinedClass>
   </file>
   <file src="lib/Files/Util.php">
@@ -190,15 +51,20 @@
       <code><![CDATA[$this->tokenProvider]]></code>
       <code><![CDATA[$this->tokenProvider]]></code>
       <code><![CDATA[$this->tokenProvider]]></code>
-      <code>IAuthTokenProvider</code>
-      <code>IAuthTokenProvider</code>
       <code>IToken</code>
       <code>IToken</code>
+      <code>private</code>
     </UndefinedClass>
+  </file>
+  <file src="lib/Middleware/InjectionMiddleware.php">
+    <NoInterfaceProperties>
+      <code><![CDATA[$this->request->server]]></code>
+      <code><![CDATA[$this->request->server]]></code>
+    </NoInterfaceProperties>
   </file>
   <file src="lib/Migration/Version2001Date20170707115443.php">
     <InvalidArrayAccess>
-      <code>$return['num_rooms']</code>
+      <code><![CDATA[$return['num_rooms']]]></code>
     </InvalidArrayAccess>
   </file>
   <file src="lib/Notification/Notifier.php">
@@ -225,15 +91,18 @@
     </UndefinedClass>
   </file>
   <file src="lib/Service/RecordingService.php">
+    <LessSpecificReturnStatement>
+      <code>$recordingFolder</code>
+    </LessSpecificReturnStatement>
+    <MoreSpecificReturnType>
+      <code>Folder</code>
+    </MoreSpecificReturnType>
     <UndefinedClass>
       <code>NoUserException</code>
       <code>NoUserException</code>
     </UndefinedClass>
   </file>
   <file src="lib/Share/Listener.php">
-    <InvalidArgument>
-      <code>[self::class, 'listenPreShare']</code>
-    </InvalidArgument>
     <UndefinedClass>
       <code><![CDATA[$event->getView()]]></code>
       <code><![CDATA[$event->getView()]]></code>

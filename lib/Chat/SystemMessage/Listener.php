@@ -26,6 +26,7 @@ namespace OCA\Talk\Chat\SystemMessage;
 use DateInterval;
 use OCA\Talk\Chat\ChatManager;
 use OCA\Talk\Events\AddParticipantsEvent;
+use OCA\Talk\Events\AlreadySharedEvent;
 use OCA\Talk\Events\AttendeesAddedEvent;
 use OCA\Talk\Events\AttendeesRemovedEvent;
 use OCA\Talk\Events\ModifyEveryoneEvent;
@@ -54,34 +55,23 @@ use OCP\ISession;
 use OCP\IUser;
 use OCP\IUserSession;
 use OCP\Server;
+use OCP\Share\Events\BeforeShareCreatedEvent;
+use OCP\Share\Events\ShareCreatedEvent;
 use OCP\Share\IShare;
-use Symfony\Component\EventDispatcher\GenericEvent;
 
 /**
  * @template-implements IEventListener<Event>
  */
 class Listener implements IEventListener {
-	protected IRequest $request;
-	protected ChatManager $chatManager;
-	protected TalkSession $talkSession;
-	protected ISession $session;
-	protected IUserSession $userSession;
-	protected ITimeFactory $timeFactory;
 
 	public function __construct(
-		IRequest $request,
-		ChatManager $chatManager,
-		TalkSession $talkSession,
-		ISession $session,
-		IUserSession $userSession,
-		ITimeFactory $timeFactory,
+		protected IRequest $request,
+		protected ChatManager $chatManager,
+		protected TalkSession $talkSession,
+		protected ISession $session,
+		protected IUserSession $userSession,
+		protected ITimeFactory $timeFactory,
 	) {
-		$this->request = $request;
-		$this->chatManager = $chatManager;
-		$this->talkSession = $talkSession;
-		$this->session = $session;
-		$this->userSession = $userSession;
-		$this->timeFactory = $timeFactory;
 	}
 
 	public static function register(IEventDispatcher $dispatcher): void {
@@ -98,8 +88,8 @@ class Listener implements IEventListener {
 		$dispatcher->addListener(Room::EVENT_AFTER_USERS_ADD, self::class . '::addSystemMessageUserAdded');
 		$dispatcher->addListener(Room::EVENT_AFTER_USER_REMOVE, self::class . '::sendSystemMessageUserRemoved');
 		$dispatcher->addListener(Room::EVENT_AFTER_PARTICIPANT_TYPE_SET, self::class . '::sendSystemMessageAboutPromoteOrDemoteModerator');
-		$dispatcher->addListener('OCP\Share::preShare', self::class . '::setShareExpiration');
-		$dispatcher->addListener('OCP\Share::postShare', self::class . '::fixMimeTypeOfVoiceMessage');
+		$dispatcher->addListener(BeforeShareCreatedEvent::class, self::class . '::setShareExpiration');
+		$dispatcher->addListener(ShareCreatedEvent::class, self::class . '::fixMimeTypeOfVoiceMessage');
 		$dispatcher->addListener(RoomShareProvider::EVENT_SHARE_FILE_AGAIN, self::class . '::fixMimeTypeOfVoiceMessage');
 		$dispatcher->addListener(Room::EVENT_AFTER_SET_MESSAGE_EXPIRATION, self::class . '::afterSetMessageExpiration');
 		$dispatcher->addListener(Room::EVENT_AFTER_SET_CALL_RECORDING, self::class . '::setCallRecording');
@@ -342,13 +332,8 @@ class Listener implements IEventListener {
 		}
 	}
 
-	/**
-	 * @param GenericEvent|Event $event
-	 * @return void
-	 */
-	public static function setShareExpiration($event): void {
-		/** @var IShare $share */
-		$share = $event->getSubject();
+	public static function setShareExpiration(BeforeShareCreatedEvent $event): void {
+		$share = $event->getShare();
 
 		if ($share->getShareType() !== IShare::TYPE_ROOM) {
 			return;
@@ -369,13 +354,8 @@ class Listener implements IEventListener {
 		$share->setExpirationDate($dateTime);
 	}
 
-	/**
-	 * @param GenericEvent|Event $event
-	 * @return void
-	 */
-	public static function fixMimeTypeOfVoiceMessage($event): void {
-		/** @var IShare $share */
-		$share = $event->getSubject();
+	public static function fixMimeTypeOfVoiceMessage(ShareCreatedEvent|AlreadySharedEvent $event): void {
+		$share = $event->getShare();
 
 		if ($share->getShareType() !== IShare::TYPE_ROOM) {
 			return;
@@ -401,6 +381,14 @@ class Listener implements IEventListener {
 		}
 		$metaData['mimeType'] = $share->getNode()->getMimeType();
 
+		if (isset($metaData['caption'])) {
+			if (is_string($metaData['caption']) && trim($metaData['caption']) !== '') {
+				$metaData['caption'] = trim($metaData['caption']);
+			} else {
+				unset($metaData['caption']);
+			}
+		}
+
 		$listener->sendSystemMessage($room, 'file_shared', ['share' => $share->getId(), 'metaData' => $metaData]);
 	}
 
@@ -420,6 +408,8 @@ class Listener implements IEventListener {
 				$this->sendSystemMessage($event->getRoom(), 'circle_added', ['circle' => $attendee->getActorId()]);
 			} elseif ($attendee->getActorType() === Attendee::ACTOR_FEDERATED_USERS) {
 				$this->sendSystemMessage($event->getRoom(), 'federated_user_added', ['federated_user' => $attendee->getActorId()]);
+			} elseif ($attendee->getActorType() === Attendee::ACTOR_PHONES) {
+				$this->sendSystemMessage($event->getRoom(), 'phone_added', ['phone' => $attendee->getActorId(), 'name' => $attendee->getDisplayName()]);
 			}
 		}
 	}
@@ -432,6 +422,8 @@ class Listener implements IEventListener {
 				$this->sendSystemMessage($event->getRoom(), 'circle_removed', ['circle' => $attendee->getActorId()]);
 			} elseif ($attendee->getActorType() === Attendee::ACTOR_FEDERATED_USERS) {
 				$this->sendSystemMessage($event->getRoom(), 'federated_user_removed', ['federated_user' => $attendee->getActorId()]);
+			} elseif ($attendee->getActorType() === Attendee::ACTOR_PHONES) {
+				$this->sendSystemMessage($event->getRoom(), 'phone_removed', ['phone' => $attendee->getActorId(), 'name' => $attendee->getDisplayName()]);
 			}
 		}
 	}
@@ -447,12 +439,12 @@ class Listener implements IEventListener {
 				$actorId = $user->getUID();
 			} elseif (\OC::$CLI || $this->session->exists('talk-overwrite-actor-cli')) {
 				$actorType = Attendee::ACTOR_GUESTS;
-				$actorId = 'cli';
-			} elseif ($this->session->exists('talk-overwrite-actor')) {
-				$actorType = Attendee::ACTOR_USERS;
-				$actorId = $this->session->get('talk-overwrite-actor');
+				$actorId = Attendee::ACTOR_ID_CLI;
 			} elseif ($this->session->exists('talk-overwrite-actor-type')) {
 				$actorType = $this->session->get('talk-overwrite-actor-type');
+				$actorId = $this->session->get('talk-overwrite-actor-id');
+			} elseif ($this->session->exists('talk-overwrite-actor-id')) {
+				$actorType = Attendee::ACTOR_USERS;
 				$actorId = $this->session->get('talk-overwrite-actor-id');
 			} else {
 				$actorType = Attendee::ACTOR_GUESTS;

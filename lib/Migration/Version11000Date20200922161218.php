@@ -26,18 +26,18 @@ declare(strict_types=1);
 namespace OCA\Talk\Migration;
 
 use Closure;
-use Doctrine\DBAL\Types\Types;
 use OCP\DB\ISchemaWrapper;
 use OCP\DB\QueryBuilder\IQueryBuilder;
+use OCP\DB\Types;
 use OCP\IDBConnection;
 use OCP\Migration\IOutput;
 use OCP\Migration\SimpleMigrationStep;
 
 class Version11000Date20200922161218 extends SimpleMigrationStep {
-	protected IDBConnection $connection;
 
-	public function __construct(IDBConnection $connection) {
-		$this->connection = $connection;
+	public function __construct(
+		protected IDBConnection $connection,
+	) {
 	}
 
 	/**
